@@ -9,14 +9,15 @@ step at a time.
 
 ## Status
 
-**Steps 1–3 complete: scaffold, database schema, and authentication/tenant-scoping.**
+**Steps 1–4 complete: scaffold, database schema, authentication/tenant-scoping, and the lead engine.**
 
 - Step 1 — Express scaffold, folder structure, `/health`.
 - Step 2 — Core MySQL schema via versioned migrations (tenants, roles, users, leads, and related tables); roles seeded.
 - Step 3 — Google Sign-In, JWT sessions with rotating/revocable refresh tokens, tenant-scope and role-based authorization middleware, self-service first Tenant Admin signup.
+- Step 4 — Lead CRUD, manual entry, status pipeline, sources, products, dynamic custom fields, duplicate detection/flagging, manual assignment, call activities, and status history — all tenant-scoped and role-gated.
 
-No CRM business functionality yet (leads, employee management, dashboard, Meta, Razorpay). See
-`docs/API.md` for exactly what exists today.
+Still not built: employee-limit-aware invitation management, dashboard/analytics, the public website
+enquiry form, Meta Lead Ads/CAPI, Razorpay billing. See `docs/API.md` for exactly what exists today.
 
 ## Tech stack
 
