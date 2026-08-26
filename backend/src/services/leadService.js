@@ -6,6 +6,7 @@ const leadStatusService = require("./leadStatusService");
 const leadSourceService = require("./leadSourceService");
 const productService = require("./productService");
 const customFieldService = require("./customFieldService");
+const metaCapiService = require("./metaCapiService");
 const userModel = require("../models/userModel");
 const httpError = require("../utils/httpError");
 const withTransaction = require("../utils/withTransaction");
@@ -193,10 +194,10 @@ async function changeStatus(tenantId, actor, id, body) {
   const lead = await leadModel.findById(tenantId, id, scope);
   if (!lead) throw httpError("Lead not found.", 404);
 
-  await leadStatusService.requireBelongsToTenant(tenantId, statusId);
+  const targetStatus = await leadStatusService.requireBelongsToTenant(tenantId, statusId);
   const fromStatusId = lead.status_id;
 
-  await withTransaction(async (conn) => {
+  const queuedCapiEvent = await withTransaction(async (conn) => {
     const ok = await leadModel.updateStatus(conn, tenantId, id, statusId, scope);
     if (!ok) throw httpError("Lead not found.", 404);
     await leadStatusHistoryModel.create(conn, tenantId, {
@@ -205,7 +206,15 @@ async function changeStatus(tenantId, actor, id, body) {
       toStatusId: statusId,
       changedBy: actor.userId,
     });
+    // Step 8 (§B): queuing is atomic with the status write itself — either
+    // both land in this transaction or neither does. Sending is NOT done
+    // here (§I: a Meta API failure must never roll back or delay the
+    // status change) — see the scheduleProcessing() call below, which only
+    // runs after this transaction has already committed successfully.
+    return metaCapiService.maybeQueueConversion(conn, tenantId, id, targetStatus);
   });
+
+  if (queuedCapiEvent) metaCapiService.scheduleProcessing(queuedCapiEvent.id);
 
   return serializeLead(await leadModel.findById(tenantId, id, scope));
 }

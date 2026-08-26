@@ -76,11 +76,18 @@ non-Graph-API-dependent code path (webhook signature verification, tenant resolu
 encryption, RBAC/tenant isolation) was verified for real against the local database with a mocked
 Graph API response layer — see the Step 7 report for what that covered and how.
 
+## Step 8 — Meta Conversions API (CAPI)
+
+No new environment variables. CAPI reuses the Step 7 Meta connection entirely — same
+`META_APP_ID`/`META_APP_SECRET`/`ENCRYPTION_KEY`, same encrypted token, same `graphClient` module.
+The one new piece of configuration it needs (the tenant's Meta Pixel/Dataset ID) is per-tenant
+data, not environment-wide, so it lives in the database (`meta_integration_settings.pixel_id`,
+set via `PATCH /api/meta/connection` — see `docs/API.md`) rather than as an env var.
+
 ## Reserved for later steps
 
 | Group | Variables | Added when |
 |---|---|---|
-| Meta CAPI | `META_CAPI_ACCESS_TOKEN` (or similar — TBD) | Meta Conversions API is implemented |
 | Razorpay | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Billing is implemented |
 
 See Section 26 of the Final Specification for the complete, final list.

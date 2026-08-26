@@ -39,6 +39,7 @@ function serializeConnection(settings) {
     pageId: settings.page_id,
     pageName: settings.page_name,
     adAccountId: settings.ad_account_id,
+    pixelId: settings.pixel_id,
     tokenExpiresAt: settings.token_expires_at,
     isExpired: isTokenExpired(settings),
     connectedAt: settings.created_at,
@@ -117,6 +118,19 @@ async function disconnect(tenantId) {
   if (!removed) throw httpError("No Meta connection to remove.", 404);
 }
 
+// Step 8 (§C/§D of the CAPI spec): the tenant's Meta Pixel/Dataset ID —
+// where a conversion event actually gets sent. Entered manually by the
+// Tenant Admin on the same connection page; see migration 016's comment
+// for why this can't be reliably auto-discovered via OAuth.
+async function setPixelId(tenantId, pixelId) {
+  const trimmed = typeof pixelId === "string" ? pixelId.trim() : "";
+  if (!trimmed) throw httpError("pixelId is required.", 400);
+  if (trimmed.length > 64) throw httpError("pixelId is too long.", 400);
+  const settings = await metaIntegrationModel.setPixelId(tenantId, trimmed);
+  if (!settings) throw httpError("Connect a Meta account before setting a Pixel ID.", 400, "META_NOT_CONNECTED");
+  return serializeConnection(settings);
+}
+
 // Used only by metaLeadService (ingestion) and the "list forms" admin
 // endpoint — never returns the decrypted token to any HTTP response.
 async function getDecryptedAccessToken(tenantId) {
@@ -125,4 +139,13 @@ async function getDecryptedAccessToken(tenantId) {
   return { settings, accessToken: decrypt(settings.access_token_encrypted) };
 }
 
-module.exports = { getConnection, beginConnect, completeConnect, disconnect, getDecryptedAccessToken, isTokenExpired, serializeConnection };
+module.exports = {
+  getConnection,
+  beginConnect,
+  completeConnect,
+  disconnect,
+  setPixelId,
+  getDecryptedAccessToken,
+  isTokenExpired,
+  serializeConnection,
+};

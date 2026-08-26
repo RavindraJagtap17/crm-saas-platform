@@ -481,6 +481,129 @@ The GET verification handshake can be exercised directly too:
 curl "http://localhost:4000/api/meta/webhook?hub.mode=subscribe&hub.verify_token=YOUR_META_WEBHOOK_VERIFY_TOKEN&hub.challenge=test123"
 ```
 
+## Meta Conversions API — CAPI (Step 8)
+
+Sends one server-side conversion event, per lead, to the tenant's own Meta Pixel/Dataset — only
+when that lead reaches a status the tenant has marked `is_final` (Lead Statuses admin page, Step
+4). **Never** on lead creation, and never for a non-final status change. Builds on the Step 7
+connection unchanged — same `meta_integration_settings` row, same encrypted token, same
+`graphClient` module — this is not a second Meta connection.
+
+### Configuration — Tenant Admin only, extends the Step 7 connection
+
+| Route | Notes |
+|---|---|
+| `PATCH /api/meta/connection` | `{ "pixelId": "123456789012345" }`. Sets the Meta Pixel/Dataset ID conversion events are sent to. `400` if empty, or if there's no Meta connection yet to attach it to. Entered manually — Meta's OAuth data doesn't reliably expose a single "correct" pixel to auto-select (see migration `016_add_pixel_id_to_meta_integration_settings`). |
+| `GET /api/meta/capi/events` | `{ "events": [{ "id": 1, "tenant_id": 4, "lead_id": 91, "event_name": "Lead", "meta_event_id": "crm_lead_4_91", "status": "sent", "retry_count": 0, "next_attempt_at": null, "last_error": null, "meta_response_code": "events_received:1", "sent_at": "...", "created_at": "..." }, ...] }` — the tenant's own recent conversion events only, most recent first. Minimum operational visibility (§K) — not an analytics dashboard: whether CAPI is usable, the latest delivery status, and enough failure detail to troubleshoot. |
+
+### Trigger (§B)
+
+`POST /api/leads/:id/status` (Step 4, unchanged route/behavior) is the only place this can fire
+from. After the status write and its `lead_status_history` row land in the same transaction that
+already existed, one more check runs *inside that same transaction*: is the **target** status
+`is_final`? If not, nothing happens — no row, no event, not even a queued-then-skipped one. If it
+is, exactly one `meta_capi_events` row is queued (or silently skipped if one already exists for
+this lead — see Idempotency). This queuing is atomic with the status change; **sending** the event
+to Meta is not — it happens afterward, asynchronously, so a slow or failing Meta call can never
+delay, fail, or roll back the status-change response itself (§I).
+
+### Event payload
+
+```json
+{
+  "event_name": "Lead",
+  "event_time": 1787745787,
+  "event_id": "crm_lead_4_91",
+  "action_source": "system_generated",
+  "user_data": { "em": ["<sha256 hex>"], "ph": ["<sha256 hex>"] }
+}
+```
+Sent as `POST https://graph.facebook.com/{version}/{pixelId}/events` with `access_token` in the
+body (`graphClient.sendCapiEvent`). `event_name` is `"Lead"` — one of Meta's own standard events,
+representing "this lead qualified," reported at the CRM's conversion moment rather than at Meta
+Lead Ads submission time (which Step 7 already covers separately, on ingestion). `action_source`
+is `"system_generated"` — the correct Meta value for a backend/pipeline-triggered event with no
+browser context (no `fbc`/`fbp`/`client_ip`/`user_agent` fields exist to send, and none are
+fabricated). `user_data.em`/`ph` are included only when the lead actually has that field — a lead
+with neither email nor phone still sends (with an empty `user_data`), rather than being skipped;
+Meta match quality suffers but the conversion signal itself isn't lost.
+
+**Hashing (§D/§J)**: before hashing, email is trimmed and lowercased; phone is normalized to
+digits-only via the *same* `normalizePhone()` Step 4 already uses for duplicate detection — no
+second phone-cleaning implementation. Both are then SHA-256 hashed (hex digest). The raw value is
+never sent to Meta and never stored — `meta_capi_events` has no email/phone columns at all.
+
+### Credential resolution (§A/§E)
+
+Strictly the target lead's own `tenant_id` → that tenant's `meta_integration_settings` row → its
+`access_token_encrypted`, decrypted only at send time via the same
+`metaIntegrationService.getDecryptedAccessToken()` Step 7 already built. Nothing here ever accepts
+a `tenant_id` from client input — there's no client input on this path at all, since it only ever
+fires from the server's own transaction. No tenant's event can ever use another tenant's
+credentials because there is no code path that looks one up by anything other than the lead's own
+resolved `tenant_id`.
+
+### Idempotency (§H) — two independent layers, deliberately separate from phone-based duplicate detection
+
+1. **We never queue a second event for the same lead.** `meta_capi_events` has a `UNIQUE
+   (tenant_id, lead_id)` constraint; queuing goes through `INSERT IGNORE`. A lead re-entering a
+   final status (re-applying the same status, or moving between two different final statuses)
+   finds its existing row and queues nothing new.
+2. **Meta itself also dedupes**, via the deterministic `event_id` (`crm_lead_{tenantId}_{leadId}`)
+   sent with the event — protects against the case where we send successfully but crash before
+   recording it, and a retry (or the startup sweep) attempts the same already-sent event again.
+
+This is unrelated to **phone-based duplicate detection** (Step 4/6/7, `leads.is_duplicate`) — that
+flags a *second lead* sharing a phone number as a probable business duplicate and still creates it.
+CAPI idempotency instead guarantees a single *lead* can never generate more than one CAPI *send*,
+regardless of how many times its status change is retried or its worker re-runs.
+
+### Queue / worker behavior (§F)
+
+`meta_capi_events` itself is the queue — `status` (`pending` → `processing` → `sent` /
+`failed_temporary` / `failed_permanent`), `retry_count`, and `next_attempt_at` are what a worker
+selects and claims against. There is no separate job-queue table, cron process, or external broker
+(Redis, etc.) — `src/jobs/` was only ever an empty Step 1 scaffold, and standing up a general
+job-queue system for exactly one job type would be exactly the "duplicate the entire job system
+unnecessarily" the spec warns against. Instead:
+- Right after a conversion is queued (post-commit), it's processed on the next event-loop tick
+  (`setImmediate`) — no polling delay for the common case.
+- On a transient failure, the retry is scheduled with `setTimeout` for as long as this process
+  keeps running.
+- On process start, `runStartupSweep()` (called from `server.js`) re-picks-up anything left
+  `pending` or due for retry — recovering exactly what a restart would otherwise strand (a lost
+  `setTimeout`, or an event queued right before a crash).
+
+Claiming is atomic (`UPDATE ... WHERE status IN ('pending','failed_temporary') AND ...`) so the
+immediate trigger, the startup sweep, and a manual reprocess can never double-send the same event.
+
+### Retry behavior (§G)
+
+Backoff: 1, 5, 15, 60, 240 minutes (5 attempts total) — `failed_temporary` between attempts,
+`failed_permanent` once exhausted, with a message noting the max was reached. **Transient vs.
+permanent** is read from Meta's own `error.is_transient` field when present, falling back to HTTP
+status (`5xx`/`429` → transient; everything else, e.g. `400` validation or `401`/`403` auth → not
+retried at all, since nothing about retrying fixes a bad credential or a rejected value). A missing
+Meta connection, a missing Pixel ID, or an expired/revoked token are all classified as immediate
+`failed_permanent` outcomes too, for the same reason — only a Tenant Admin action (reconnect,
+configure a Pixel) can resolve any of them, so time-based retrying would never help.
+
+### Failure isolation (§I)
+
+The lead status change is committed in its own transaction, before any Meta API call is ever made.
+Every one of these failure cases still leaves the status change fully intact: no Meta integration,
+an expired/revoked token, a temporary Meta outage, or a permanent Meta validation error. CAPI
+failure is recorded on the `meta_capi_events` row only — it cannot roll back, fail, or delay the
+`POST /api/leads/:id/status` response, because sending happens strictly after that response's
+transaction has already committed.
+
+### Local testing without a real Meta App
+
+Same approach as Step 7: only `graphClient.sendCapiEvent` (the true external boundary) was mocked;
+everything else — the trigger logic, the transaction boundary, tenant/credential resolution,
+hashing, retry/backoff state transitions, idempotency, and admin visibility — was exercised for
+real against the local database and a running instance of this app.
+
 ## Everything else
 
 Any other path currently returns `404`:
@@ -489,4 +612,4 @@ Any other path currently returns `404`:
 { "error": "Not found: GET /whatever" }
 ```
 
-No Meta CAPI, Razorpay, WhatsApp, YaGo, or other later-phase routes exist yet.
+No Razorpay, WhatsApp, YaGo, or other later-phase routes exist yet.

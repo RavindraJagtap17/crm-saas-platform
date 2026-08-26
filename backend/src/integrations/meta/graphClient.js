@@ -95,6 +95,54 @@ function getLeadForms(pageId, pageAccessToken) {
   });
 }
 
+/**
+ * Step 8 — Conversions API: sends one server-side event to a tenant's own
+ * Pixel/Dataset. Deliberately does NOT reuse graphRequest()'s throw-on-
+ * error behavior: metaCapiService needs to tell a transient failure
+ * (worth retrying) apart from a permanent one (never will succeed) to
+ * implement retry-with-backoff correctly, so this returns a structured
+ * result either way instead of throwing. Still the same module, same
+ * BASE_URL, same fetch() — not a second, unrelated HTTP client.
+ */
+async function sendCapiEvent(pixelId, accessToken, eventPayload) {
+  const url = new URL(`${BASE_URL}/${pixelId}/events`);
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [eventPayload], access_token: accessToken }),
+    });
+  } catch {
+    return { ok: false, transient: true, code: "NETWORK_ERROR", message: "Could not reach Meta." };
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    return { ok: false, transient: true, code: "BAD_RESPONSE", message: "Meta returned an unexpected response." };
+  }
+
+  if (res.ok && !data.error) {
+    return { ok: true, eventsReceived: data.events_received, fbtraceId: data.fbtrace_id };
+  }
+
+  const error = data.error || {};
+  // Meta's error payload often carries `is_transient` directly; fall back
+  // to HTTP status when it's absent — 5xx/429 are worth retrying, anything
+  // else (400 validation, 401/403 auth) is a permanent, retry-proof failure.
+  const transient = typeof error.is_transient === "boolean" ? error.is_transient : res.status >= 500 || res.status === 429;
+  return {
+    ok: false,
+    transient,
+    code: String(error.code ?? res.status),
+    subcode: error.error_subcode,
+    message: error.message || "Meta API request failed.",
+  };
+}
+
 module.exports = {
   exchangeCodeForToken,
   exchangeForLongLivedToken,
@@ -102,4 +150,5 @@ module.exports = {
   getAdAccounts,
   fetchLead,
   getLeadForms,
+  sendCapiEvent,
 };

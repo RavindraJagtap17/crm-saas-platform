@@ -1,5 +1,6 @@
 const metaIntegrationService = require("../services/metaIntegrationService");
 const metaFormFieldMappingService = require("../services/metaFormFieldMappingService");
+const metaCapiEventModel = require("../models/metaCapiEventModel");
 const graphClient = require("../integrations/meta/graphClient");
 const httpError = require("../utils/httpError");
 const asyncHandler = require("../utils/asyncHandler");
@@ -44,6 +45,20 @@ const disconnect = asyncHandler(async (req, res) => {
   res.status(204).send();
 });
 
+// PATCH /api/meta/connection — Step 8: sets the Pixel/Dataset ID CAPI
+// conversion events are sent to. A field on the existing Step 7
+// connection, not a second connect flow — see migration 016.
+const updateConnection = asyncHandler(async (req, res) => {
+  const connection = await metaIntegrationService.setPixelId(req.tenantId, req.body?.pixelId);
+  res.json(connection);
+});
+
+// GET /api/meta/capi/events — Step 8 §K: minimum admin visibility into
+// recent conversion sends for the caller's own tenant only.
+const listCapiEvents = asyncHandler(async (req, res) => {
+  res.json({ events: await metaCapiEventModel.listForTenant(req.tenantId, 100) });
+});
+
 // GET /api/meta/forms — "see connected Meta forms where available" (§I).
 // Requires a live, non-expired connection; fails clearly otherwise
 // rather than silently returning an empty list.
@@ -81,6 +96,8 @@ module.exports = {
   oauthCallback,
   getConnection,
   disconnect,
+  updateConnection,
+  listCapiEvents,
   listForms,
   listMappings,
   createMapping,

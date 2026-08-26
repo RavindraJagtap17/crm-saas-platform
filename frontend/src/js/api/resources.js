@@ -67,12 +67,14 @@ export const webFormsApi = {
 export const metaApi = {
   connect: () => api.get("/api/meta/connect"),
   connection: () => api.get("/api/meta/connection"),
+  updateConnection: (body) => api.patch("/api/meta/connection", body),
   disconnect: () => api.delete("/api/meta/connection"),
   forms: () => api.get("/api/meta/forms"),
   mappings: (formId) => api.get(`/api/meta/mappings${qs({ formId })}`),
   createMapping: (body) => api.post("/api/meta/mappings", body),
   updateMapping: (id, body) => api.patch(`/api/meta/mappings/${id}`, body),
   removeMapping: (id) => api.delete(`/api/meta/mappings/${id}`),
+  capiEvents: () => api.get("/api/meta/capi/events"),
 };
 
 export const superAdminApi = {

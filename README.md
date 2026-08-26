@@ -9,7 +9,7 @@ step at a time.
 
 ## Status
 
-**Steps 1–7 complete: scaffold, database schema, authentication, the lead engine, the frontend, the website enquiry form, and Meta Lead Ads integration.**
+**Steps 1–8 complete: scaffold, database schema, authentication, the lead engine, the frontend, the website enquiry form, Meta Lead Ads integration, and Meta Conversions API.**
 
 - Step 1 — Express scaffold, folder structure, `/health`.
 - Step 2 — Core MySQL schema via versioned migrations (tenants, roles, users, leads, and related tables); roles seeded.
@@ -18,8 +18,9 @@ step at a time.
 - Step 5 — Role-specific frontend (Super Admin, Tenant Admin, Employee) in plain HTML/CSS/JS, a shared design system, white-label branding, dashboards, and full lead-management UI. A few small backend additions (tenant branding, employee invitation, dashboard aggregates, Super Admin tenant management) were built alongside it — see `docs/API.md`.
 - Step 6 — Universal website enquiry form: an embeddable script widget (Shadow DOM–isolated) and an iframe fallback, both backed by one public submission API that reuses the Step 4 lead engine unchanged — same duplicate detection, same custom-field validation, same tenant scoping. Per-tenant domain allowlisting, honeypot, and IP rate limiting. Tenant Admins manage forms from a new **Website Forms** page.
 - Step 7 — Meta Lead Ads integration: tenant-scoped Meta OAuth connection (one Facebook Page per tenant, enforced unambiguous by a database `UNIQUE` constraint), a shared inbound webhook that verifies Meta's signature and resolves the owning tenant strictly by `page_id`, per-tenant/per-form field mapping (core fields onto the lead, everything else into `leads.custom_fields`, unmapped fields dropped), and lead creation that reuses the Step 4 `leadService.createLead()` unchanged — same duplicate detection, same tenant scoping, same "starts unassigned" rule. Meta access tokens are encrypted at rest (AES-256-GCM) and never leave the server. Idempotent on Meta's own lead ID, independent of phone-based duplicate flagging. Tenant Admins manage the connection and field mappings from a new **Meta Lead Ads** page.
+- Step 8 — Meta Conversions API: when a lead reaches its tenant's configured final status (Step 4's `lead_statuses.is_final`), a server-side conversion event is sent to that tenant's own Meta Pixel (extending the Step 7 connection with one manually-entered Pixel ID — not a second connection). Email/phone are hashed (SHA-256) before ever leaving the server; raw values are never sent, logged, or stored. A DB-backed queue (`meta_capi_events` — no new external infrastructure) handles sending, bounded retry-with-backoff for transient Meta failures, and permanent-failure detection for validation/auth errors. A CAPI failure can never roll back or delay the lead status change it originated from. Idempotent per-lead, independent of both webhook idempotency (Step 7) and phone-based duplicate detection (Step 4).
 
-Still not built: Meta Conversions API (CAPI), Razorpay billing.
+Still not built: Razorpay billing.
 
 ## Tech stack
 

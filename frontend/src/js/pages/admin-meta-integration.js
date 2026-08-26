@@ -295,6 +295,15 @@ async function renderConnectionCard(cardEl, onChange) {
         ${connection.isExpired ? `<button class="btn btn-primary" id="connect-btn">Reconnect</button>` : ""}
         <button class="btn btn-secondary" id="disconnect-btn">Disconnect</button>
       </div>
+      <div class="divider"></div>
+      <div class="field">
+        <label class="label" for="pixel-id-input">Meta Pixel / Dataset ID <span class="optional">(for Conversions API)</span></label>
+        <div class="flex gap-2">
+          <input class="input" id="pixel-id-input" value="${escapeHtml(connection.pixelId || "")}" placeholder="e.g. 123456789012345" style="flex:1" />
+          <button class="btn btn-secondary" id="save-pixel-btn">Save</button>
+        </div>
+        <span class="hint">Where a lead's conversion event is sent once it reaches your configured final status. Find this in Meta Events Manager — it isn't something we can detect automatically.</span>
+      </div>
     </div>`;
 
   const connectBtn = cardEl.querySelector("#connect-btn");
@@ -317,7 +326,81 @@ async function renderConnectionCard(cardEl, onChange) {
     }
   });
 
+  cardEl.querySelector("#save-pixel-btn").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    const pixelId = cardEl.querySelector("#pixel-id-input").value.trim();
+    setButtonLoading(btn, true);
+    try {
+      await metaApi.updateConnection({ pixelId });
+      toastSuccess("Pixel ID saved.");
+    } catch (err) {
+      toastError(err.message);
+    } finally {
+      setButtonLoading(btn, false);
+    }
+  });
+
   return connection;
+}
+
+const CAPI_STATUS_BADGE = {
+  pending: "badge-neutral",
+  processing: "badge-neutral",
+  sent: "badge-success",
+  failed_temporary: "badge-warning",
+  failed_permanent: "badge-danger",
+};
+const CAPI_STATUS_LABEL = {
+  pending: "Pending",
+  processing: "Sending",
+  sent: "Sent",
+  failed_temporary: "Retrying",
+  failed_permanent: "Failed",
+};
+
+// Step 8 §K: minimum operational visibility, not a reporting dashboard —
+// just enough for a Tenant Admin to see whether conversions are actually
+// going out and why one didn't.
+async function renderCapiCard(cardEl) {
+  cardEl.innerHTML = `<div class="card-body"><div class="skeleton skeleton-row"></div></div>`;
+  let events;
+  try {
+    ({ events } = await metaApi.capiEvents());
+  } catch (err) {
+    cardEl.innerHTML = `<div class="card-body">${emptyState({ icon: "⚠", title: "Couldn't load conversion events", desc: err.message })}</div>`;
+    return;
+  }
+
+  if (!events.length) {
+    cardEl.innerHTML = `<div class="card-body">${emptyState({
+      icon: "⇪",
+      title: "No conversions sent yet",
+      desc: "When a lead reaches your tenant's configured final status, a Meta Conversions API event is sent automatically and will show up here.",
+    })}</div>`;
+    return;
+  }
+
+  cardEl.innerHTML = `
+    <div class="table-wrap" style="border:none;border-radius:0">
+      <table class="data-table">
+        <thead><tr><th>Lead</th><th>Event</th><th>Status</th><th>Retries</th><th>Last error</th><th>Sent</th></tr></thead>
+        <tbody>
+          ${events
+            .map(
+              (ev) => `
+            <tr>
+              <td data-label="Lead">#${ev.lead_id}</td>
+              <td data-label="Event">${escapeHtml(ev.event_name)}</td>
+              <td data-label="Status"><span class="badge ${CAPI_STATUS_BADGE[ev.status] || "badge-neutral"}">${CAPI_STATUS_LABEL[ev.status] || ev.status}</span></td>
+              <td data-label="Retries">${ev.retry_count}</td>
+              <td data-label="Last error" class="text-sm text-tertiary">${ev.last_error ? escapeHtml(ev.last_error) : "—"}</td>
+              <td data-label="Sent">${ev.sent_at ? formatDateTime(ev.sent_at) : "—"}</td>
+            </tr>`
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 async function main() {
@@ -334,7 +417,14 @@ async function main() {
       </div>
     </div>
     <div class="card mb-4" id="connection-card"></div>
-    <div class="card" id="forms-card"></div>
+    <div class="card mb-4" id="forms-card"></div>
+    <div class="page-header">
+      <div>
+        <h3 class="page-title" style="font-size:1.1rem">Conversions (Meta CAPI)</h3>
+        <p class="page-subtitle">Sent automatically when a lead reaches a status marked "final" — not on lead creation.</p>
+      </div>
+    </div>
+    <div class="card" id="capi-card"></div>
   `;
 
   // §I: the OAuth callback (meta.controller.js oauthCallback) redirects
@@ -363,6 +453,7 @@ async function main() {
 
   const connectionCard = document.getElementById("connection-card");
   const formsCard = document.getElementById("forms-card");
+  const capiCard = document.getElementById("capi-card");
 
   const refresh = async () => {
     const connection = await renderConnectionCard(connectionCard, refresh);
@@ -370,6 +461,7 @@ async function main() {
   };
 
   await refresh();
+  await renderCapiCard(capiCard);
 }
 
 main();

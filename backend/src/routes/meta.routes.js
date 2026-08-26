@@ -39,8 +39,12 @@ router.use(authenticate, tenantScope, requireRole("tenant_admin"));
 
 router.get("/connect", controller.connect);
 router.get("/connection", controller.getConnection);
+router.patch("/connection", controller.updateConnection);
 router.delete("/connection", controller.disconnect);
 router.get("/forms", controller.listForms);
+
+// Step 8 — Meta Conversions API admin visibility (§K).
+router.get("/capi/events", controller.listCapiEvents);
 
 router.get("/mappings", controller.listMappings);
 router.post("/mappings", controller.createMapping);
