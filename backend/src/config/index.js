@@ -5,12 +5,20 @@ require("dotenv").config();
  * Nothing else in the codebase should touch process.env directly.
  *
  * REQUIRED lists which variables must be set for the app to boot at all.
- * It starts small on purpose — Step 1 only needs the app to serve /health.
- * Later steps (DB, Google Sign-In, Meta, Razorpay) add their own required
- * variables here as those integrations are actually implemented, so a
- * missing secret fails loudly at startup instead of at first use.
+ * It grows as each step adds a real dependency on something — Step 1 needed
+ * nothing, Step 2's database work only affected the separate migration/seed
+ * scripts, and Step 3 is the first time the running app itself needs the
+ * database and needs Google/JWT secrets to authenticate anyone. A missing
+ * value now fails loudly at startup instead of at first request.
  */
-const REQUIRED = [];
+const REQUIRED = [
+  "DB_HOST",
+  "DB_NAME",
+  "DB_USER",
+  "JWT_ACCESS_SECRET",
+  "JWT_REFRESH_SECRET",
+  "GOOGLE_CLIENT_ID",
+];
 
 function readList(name, fallback = []) {
   const raw = process.env[name];
@@ -38,6 +46,29 @@ const config = {
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:3000",
   corsAllowedOrigins: readList("CORS_ALLOWED_ORIGINS"),
   logLevel: process.env.LOG_LEVEL || "info",
+
+  db: {
+    host: process.env.DB_HOST,
+    port: parseInt(process.env.DB_PORT, 10) || 3306,
+    name: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD || "",
+    poolMin: parseInt(process.env.DB_POOL_MIN, 10) || 2,
+    poolMax: parseInt(process.env.DB_POOL_MAX, 10) || 10,
+  },
+
+  jwt: {
+    accessSecret: process.env.JWT_ACCESS_SECRET,
+    // Also used (as an HMAC key, not for signing a JWT) to hash refresh
+    // tokens before they're stored — see src/utils/refreshToken.js.
+    refreshSecret: process.env.JWT_REFRESH_SECRET,
+    accessExpiry: process.env.JWT_ACCESS_EXPIRY || "15m",
+    refreshExpiry: process.env.JWT_REFRESH_EXPIRY || "30d",
+  },
+
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+  },
 };
 
 module.exports = config;

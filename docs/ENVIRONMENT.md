@@ -21,30 +21,49 @@ requirements (a database connection, a JWT secret, …), those variables will be
 `REQUIRED` list in `backend/src/config/index.js`, and the app will fail fast at startup — not at
 first use — if one is missing.
 
-## Active as of Step 2 (migration/seed tooling only)
+## Active as of Step 2 — database
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `DB_HOST` | `127.0.0.1` | MySQL host |
 | `DB_PORT` | `3306` | MySQL port |
-| `DB_NAME` | `crm_phase1` | Database name — must already exist; migrations create tables inside it, not the database itself |
+| `DB_NAME` | `crm_dev` | Database name — must already exist; migrations create tables inside it, not the database itself |
 | `DB_USER` | `root` | MySQL user |
 | `DB_PASSWORD` | *(empty)* | MySQL password |
-| `DB_POOL_MIN` / `DB_POOL_MAX` | `2` / `10` | Reserved for the application's connection pool, added when the app itself starts querying the database (a later step) |
+| `DB_POOL_MIN` / `DB_POOL_MAX` | `2` / `10` | Sizing for the application's own connection pool (`src/config/db.js`) |
 
-`DB_HOST`, `DB_NAME`, and `DB_USER` are required — `migrations/migrate.js` and `seeders/001_roles.js`
-fail fast with a clear message if any are missing. The running Express app (`npm run dev`) does
-**not** read these yet and still starts with zero configuration, exactly as in Step 1 — only the
-migration and seed scripts use the database right now.
+`DB_HOST`, `DB_NAME`, and `DB_USER` are required. As of Step 3 this applies to the running Express
+app itself, not just `migrations/migrate.js` and `seeders/001_roles.js` — the app now queries the
+database (user lookup, tenant creation, refresh tokens), so it fails fast at startup if these are
+missing rather than failing on the first request that needs them.
+
+## Active as of Step 3 — Google Sign-In & sessions
+
+| Variable | Purpose |
+|---|---|
+| `GOOGLE_CLIENT_ID` | The OAuth 2.0 Web Client ID from Google Cloud Console → APIs & Services → Credentials. Used both server-side (to verify that an ID token was really issued for this app) and by the frontend (to render the Sign-In button) — not a secret in the traditional sense, but sign-in cannot work without a real one configured in Google Cloud. |
+| `JWT_ACCESS_SECRET` | Signs the ~15-minute access token. Random, high-entropy, environment-specific. |
+| `JWT_REFRESH_SECRET` | **Not** used to sign a JWT — refresh tokens are opaque random values, not JWTs (see below). This is the HMAC key used to hash a refresh token before it's stored, so a database leak alone can't be replayed as a valid session. |
+| `JWT_ACCESS_EXPIRY` | Access token lifetime. `15m` per the approved spec. |
+| `JWT_REFRESH_EXPIRY` | Refresh token lifetime and refresh cookie `maxAge`. `30d` per the approved spec. |
+
+Generate both secrets locally with:
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+**Why the refresh token isn't a JWT:** a signed JWT can prove it hasn't been *tampered with*, but
+it can't be individually *revoked* without a server-side blacklist anyway — so this implementation
+skips the signed-token step entirely. A refresh token is a random 384-bit value; the server stores
+only its HMAC (via `JWT_REFRESH_SECRET`) in the `refresh_tokens` table, alongside an expiry and a
+revoked flag. That's what makes rotation-with-reuse-detection and logout-revocation possible.
+
+`ENCRYPTION_KEY` remains reserved — not used until Meta token-at-rest encryption is implemented.
 
 ## Reserved for later steps
 
-These already exist in `backend/.env.example` for documentation, but nothing in the code reads
-them yet:
-
 | Group | Variables | Added when |
 |---|---|---|
-| Auth | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRY`, `JWT_REFRESH_EXPIRY`, `ENCRYPTION_KEY`, `GOOGLE_CLIENT_ID` | Google Sign-In is implemented |
 | Meta | `META_APP_ID`, `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN` | Meta Lead Ads / CAPI is implemented |
 | Razorpay | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Billing is implemented |
 
