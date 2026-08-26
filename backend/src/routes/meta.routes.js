@@ -1,6 +1,7 @@
 const express = require("express");
 const authenticate = require("../middlewares/authenticate");
 const tenantScope = require("../middlewares/tenantScope");
+const requireActiveTenant = require("../middlewares/requireActiveTenant");
 const requireRole = require("../middlewares/requireRole");
 const validateIdParam = require("../middlewares/validateIdParam");
 const webhookController = require("../controllers/metaWebhook.controller");
@@ -34,8 +35,8 @@ router.post("/webhook", webhookController.receiveEvent);
 // metaIntegrationService.verifyState.
 router.get("/oauth/callback", controller.oauthCallback);
 
-// ---- Everything else: Tenant Admin only ----
-router.use(authenticate, tenantScope, requireRole("tenant_admin"));
+// ---- Everything else: Tenant Admin only, tenant must be active (Step 9 §I) ----
+router.use(authenticate, tenantScope, requireActiveTenant, requireRole("tenant_admin"));
 
 router.get("/connect", controller.connect);
 router.get("/connection", controller.getConnection);

@@ -77,10 +77,29 @@ export const metaApi = {
   capiEvents: () => api.get("/api/meta/capi/events"),
 };
 
+export const billingApi = {
+  plans: () => api.get("/api/billing/plans"),
+  subscription: () => api.get("/api/billing/subscription"),
+  payments: () => api.get("/api/billing/payments"),
+  subscribe: (planId) => api.post("/api/billing/subscribe", { planId }),
+  changePlan: (planId, timing) => api.patch("/api/billing/subscription/plan", { planId, timing }),
+};
+
 export const superAdminApi = {
   overview: () => api.get("/api/super-admin/overview"),
   listTenants: () => api.get("/api/super-admin/tenants"),
   getTenant: (id) => api.get(`/api/super-admin/tenants/${id}`),
   updateEmployeeLimit: (id, employeeLimit) => api.patch(`/api/super-admin/tenants/${id}/employee-limit`, { employeeLimit }),
   updateStatus: (id, status) => api.patch(`/api/super-admin/tenants/${id}/status`, { status }),
+  // Step 9: local plan catalog
+  listPlans: () => api.get("/api/super-admin/plans"),
+  createPlan: (body) => api.post("/api/super-admin/plans", body),
+  updatePlan: (id, body) => api.patch(`/api/super-admin/plans/${id}`, body),
+  setPlanActive: (id, isActive) => api.patch(`/api/super-admin/plans/${id}/active`, { isActive }),
+  // Step 9: any-tenant subscription override
+  getTenantSubscription: (id) => api.get(`/api/super-admin/tenants/${id}/subscription`),
+  changeTenantPlan: (id, planId, timing) => api.patch(`/api/super-admin/tenants/${id}/subscription/plan`, { planId, timing }),
+  suspendTenantSubscription: (id) => api.post(`/api/super-admin/tenants/${id}/subscription/suspend`),
+  resumeTenantSubscription: (id) => api.post(`/api/super-admin/tenants/${id}/subscription/resume`),
+  cancelTenantSubscription: (id) => api.post(`/api/super-admin/tenants/${id}/subscription/cancel`),
 };

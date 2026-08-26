@@ -24,6 +24,11 @@ function safeUser(user) {
     role: user.role_name,
     tenantId: user.tenant_id,
     status: user.status,
+    // Step 9: UX-only signal for the frontend (e.g. redirect a
+    // pending_payment tenant_admin to billing.html) — null for a
+    // super_admin, who carries no tenant at all. The actual access gate
+    // is enforced server-side by requireActiveTenant, not this field.
+    tenantStatus: user.tenant_status ?? null,
   };
 }
 

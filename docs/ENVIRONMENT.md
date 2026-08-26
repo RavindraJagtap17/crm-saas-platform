@@ -84,10 +84,30 @@ The one new piece of configuration it needs (the tenant's Meta Pixel/Dataset ID)
 data, not environment-wide, so it lives in the database (`meta_integration_settings.pixel_id`,
 set via `PATCH /api/meta/connection` — see `docs/API.md`) rather than as an env var.
 
+## Active as of Step 9 — Razorpay Subscription Billing
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `RAZORPAY_KEY_ID` | *(required)* | From the Razorpay Dashboard → Settings → API Keys (use Test Mode keys for local dev). This is Razorpay's **public** key — also read by the frontend (`frontend/config.js`) to open Checkout, the same trust level as `GOOGLE_CLIENT_ID`. |
+| `RAZORPAY_KEY_SECRET` | *(required)* | From the same API Keys page. Server-side only — used as HTTP Basic Auth for every outbound Razorpay API call (`backend/src/integrations/razorpay/razorpayClient.js`). Never sent to the browser, never logged. |
+| `RAZORPAY_WEBHOOK_SECRET` | *(required)* | **Not** the same value as `RAZORPAY_KEY_SECRET` — a separate secret you set when configuring the webhook itself (Dashboard → Settings → Webhooks). Verifies `X-Razorpay-Signature` on every inbound webhook. |
+
+Same "no real credentials in this sandboxed environment" situation as `GOOGLE_CLIENT_ID`/
+`META_APP_ID` in earlier steps: `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` ship as placeholders in
+`.env`. The server boots and every non-Razorpay-API-dependent code path (webhook signature
+verification, idempotency, tenant/plan resolution, the full activation/gating/reconciliation state
+machine, and every failure path) was verified for real against the local database with a mocked
+Razorpay API response layer — see the Step 9 report for what that covered and how. Real end-to-end
+testing against Razorpay Test Mode additionally requires a publicly reachable HTTPS endpoint for
+webhook delivery (a tunnel like ngrok, or a staging deployment) — Razorpay cannot reach `localhost`.
+
+See `docs/API.md`'s "Razorpay Subscription Billing" section for the local plan catalog vs. Razorpay
+Plan distinction, the full signup/checkout/webhook flow, and exactly which webhook events are
+handled.
+
 ## Reserved for later steps
 
-| Group | Variables | Added when |
-|---|---|---|
-| Razorpay | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Billing is implemented |
+Nothing currently reserved — WhatsApp, YaGo, and every other future-phase feature are out of scope
+for this project's approved phases and have no environment variables allocated.
 
 See Section 26 of the Final Specification for the complete, final list.

@@ -70,10 +70,21 @@ async function updateEmployeeLimit(id, employeeLimit) {
   return findById(id);
 }
 
-async function updateStatus(id, status) {
-  const [result] = await pool.query(`UPDATE tenants SET status = ? WHERE id = ?`, [status, id]);
+// conn is optional and trailing (not the leading-conn convention used
+// elsewhere) specifically so the existing superAdminService.js call site
+// (updateStatus(id, status), no transaction involved) needs no change —
+// Step 9's webhook reconciliation is the only caller that passes one, to
+// write this in the same transaction as the subscription state it derives
+// this status from (see razorpayWebhookService.js).
+async function updateStatus(id, status, conn) {
+  const runner = conn || pool;
+  const [result] = await runner.query(`UPDATE tenants SET status = ? WHERE id = ?`, [status, id]);
   if (result.affectedRows === 0) return null;
-  return findById(id);
+  // Mid-transaction (conn passed), the caller doesn't need the row back —
+  // a read via the shared `pool` here wouldn't see this same transaction's
+  // still-uncommitted write anyway. Only the no-conn (existing) call site
+  // reads it back.
+  return conn ? true : findById(id);
 }
 
 async function platformCounts() {

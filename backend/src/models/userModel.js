@@ -1,10 +1,19 @@
 const pool = require("../config/db");
 
+// LEFT JOIN tenants: a super_admin's tenant_id is NULL by design (§3), so
+// this must not turn into an INNER JOIN that would exclude them. t.status
+// is Step 9's tenant-facing subscription gate — surfaced on the session
+// user object so the frontend can route a pending_payment/suspended
+// tenant_admin to billing without a second round-trip (see authService.js
+// safeUser()); the backend's own enforcement is the requireActiveTenant
+// middleware, never this value alone.
 const SELECT_WITH_ROLE = `
   SELECT u.id, u.tenant_id, u.google_id, u.email, u.name, u.avatar_url,
-         u.role_id, u.status, u.last_login_at, r.name AS role_name
+         u.role_id, u.status, u.last_login_at, r.name AS role_name,
+         t.status AS tenant_status
   FROM users u
   JOIN roles r ON r.id = u.role_id
+  LEFT JOIN tenants t ON t.id = u.tenant_id
 `;
 
 async function findByEmail(email) {

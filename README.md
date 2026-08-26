@@ -9,7 +9,7 @@ step at a time.
 
 ## Status
 
-**Steps 1–8 complete: scaffold, database schema, authentication, the lead engine, the frontend, the website enquiry form, Meta Lead Ads integration, and Meta Conversions API.**
+**Steps 1–9 complete: scaffold, database schema, authentication, the lead engine, the frontend, the website enquiry form, Meta Lead Ads integration, Meta Conversions API, and Razorpay subscription billing.**
 
 - Step 1 — Express scaffold, folder structure, `/health`.
 - Step 2 — Core MySQL schema via versioned migrations (tenants, roles, users, leads, and related tables); roles seeded.
@@ -19,8 +19,9 @@ step at a time.
 - Step 6 — Universal website enquiry form: an embeddable script widget (Shadow DOM–isolated) and an iframe fallback, both backed by one public submission API that reuses the Step 4 lead engine unchanged — same duplicate detection, same custom-field validation, same tenant scoping. Per-tenant domain allowlisting, honeypot, and IP rate limiting. Tenant Admins manage forms from a new **Website Forms** page.
 - Step 7 — Meta Lead Ads integration: tenant-scoped Meta OAuth connection (one Facebook Page per tenant, enforced unambiguous by a database `UNIQUE` constraint), a shared inbound webhook that verifies Meta's signature and resolves the owning tenant strictly by `page_id`, per-tenant/per-form field mapping (core fields onto the lead, everything else into `leads.custom_fields`, unmapped fields dropped), and lead creation that reuses the Step 4 `leadService.createLead()` unchanged — same duplicate detection, same tenant scoping, same "starts unassigned" rule. Meta access tokens are encrypted at rest (AES-256-GCM) and never leave the server. Idempotent on Meta's own lead ID, independent of phone-based duplicate flagging. Tenant Admins manage the connection and field mappings from a new **Meta Lead Ads** page.
 - Step 8 — Meta Conversions API: when a lead reaches its tenant's configured final status (Step 4's `lead_statuses.is_final`), a server-side conversion event is sent to that tenant's own Meta Pixel (extending the Step 7 connection with one manually-entered Pixel ID — not a second connection). Email/phone are hashed (SHA-256) before ever leaving the server; raw values are never sent, logged, or stored. A DB-backed queue (`meta_capi_events` — no new external infrastructure) handles sending, bounded retry-with-backoff for transient Meta failures, and permanent-failure detection for validation/auth errors. A CAPI failure can never roll back or delay the lead status change it originated from. Idempotent per-lead, independent of both webhook idempotency (Step 7) and phone-based duplicate detection (Step 4).
+- Step 9 — Razorpay subscription billing: a new tenant starts `pending_payment` (unchanged Step 3 default) and stays locked out of the CRM interior — enforced by a new `requireActiveTenant` backend middleware, not just a frontend redirect — until a signed Razorpay webhook (never a browser redirect) confirms the subscription is genuinely active. Super Admin manages a local plan catalog that references (never edits) Razorpay's own immutable Plans. Tenant Admin can upgrade/downgrade their own plan (`now` or `cycle_end`, exactly what Razorpay supports); Super Admin can change, suspend (real Razorpay pause), or cancel any tenant's subscription. A payment ledger and webhook-driven state reconciliation are both idempotent (`razorpay_webhook_events`/`payments` unique constraints); a single failed payment never permanently locks a tenant out, and `employee_limit` stays 3 on activation exactly as it always has — never derived from the plan.
 
-Still not built: Razorpay billing.
+Still not built: WhatsApp, YaGo, and every other future-phase feature outside this project's approved scope.
 
 ## Tech stack
 
@@ -47,10 +48,10 @@ frontend/
 ├── serve.json               Local-dev-only server config (see note below)
 ├── public/                  One folder per role area — every page is a plain .html file
 │   ├── auth/                 Sign in, create-agency signup
-│   ├── super-admin/           Platform overview, tenant detail
+│   ├── super-admin/           Platform overview, tenant detail, plan catalog
 │   ├── admin/                  Tenant Admin: dashboard, leads, statuses, sources, products,
 │   │                            custom fields, web forms, Meta Lead Ads, employees, branding, billing
-│   ├── employee/                Employee: dashboard, my leads, lead detail
+│   ├── employee/                Employee: dashboard, my leads, lead detail, account-inactive
 │   └── embed/                    crm-lead-widget.js (script embed) + lead-form.html (iframe fallback)
 └── src/
     ├── css/                  tokens.css (design tokens) → base.css → components.css → layout.css

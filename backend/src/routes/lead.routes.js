@@ -1,6 +1,7 @@
 const express = require("express");
 const authenticate = require("../middlewares/authenticate");
 const tenantScope = require("../middlewares/tenantScope");
+const requireActiveTenant = require("../middlewares/requireActiveTenant");
 const requireRole = require("../middlewares/requireRole");
 const validateIdParam = require("../middlewares/validateIdParam");
 const controller = require("../controllers/lead.controller");
@@ -9,8 +10,10 @@ const router = express.Router();
 
 // Every route here requires a real session and a resolved tenant. Super
 // Admin is deliberately excluded from all of them (§B/§L) — leads are not
-// part of the platform-level role's job.
-router.use(authenticate, tenantScope, requireRole("tenant_admin", "tenant_employee"));
+// part of the platform-level role's job. requireActiveTenant (Step 9 §I)
+// blocks a pending_payment/suspended/canceled tenant from the CRM
+// interior — leads are the core of that interior.
+router.use(authenticate, tenantScope, requireActiveTenant, requireRole("tenant_admin", "tenant_employee"));
 
 router.post("/", controller.create);
 router.get("/", controller.list);

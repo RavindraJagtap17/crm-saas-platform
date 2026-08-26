@@ -250,9 +250,17 @@ across every tenant._
 - `GET /tenants/:id` — one tenant plus `employeeSeatsUsed` and its `users` list.
 - `PATCH /tenants/:id/employee-limit` — body `{ "employeeLimit": 10 }`.
 - `PATCH /tenants/:id/status` — body `{ "status": "pending_payment" | "active" | "suspended" | "canceled" }`.
-  This **is** the "suspend/cancel subscription" capability from §B — there's no `subscriptions`
-  table or Razorpay integration yet, so `tenants.status` (which already gates workspace access) is
-  the only thing to suspend/cancel against right now.
+  As of Step 9 this is a **manual override of the raw tenant status only** — it does not touch
+  Razorpay at all. It exists for a tenant that has no subscription yet (hasn't completed
+  self-service signup/checkout); once a tenant has a real subscription, use the subscription-aware
+  endpoints below instead, which keep Razorpay's own state and `tenants.status` consistent.
+
+**Step 9 additions** — see the full "Razorpay Subscription Billing" section further down for
+request/response detail:
+- `GET/POST /plans`, `PATCH /plans/:id`, `PATCH /plans/:id/active` — local plan catalog management.
+- `GET /tenants/:id/subscription`, `PATCH /tenants/:id/subscription/plan`,
+  `POST /tenants/:id/subscription/{suspend,resume,cancel}` — any-tenant subscription override,
+  built on the exact same service functions the Tenant Admin's own billing routes call.
 
 ## Website enquiry form (Step 6)
 
@@ -604,6 +612,176 @@ everything else — the trigger logic, the transaction boundary, tenant/credenti
 hashing, retry/backoff state transitions, idempotency, and admin visibility — was exercised for
 real against the local database and a running instance of this app.
 
+## Razorpay Subscription Billing (Step 9)
+
+Gates access to the CRM interior behind an active subscription. A tenant's Google Sign-In and
+first Tenant Admin (Step 3) are unaffected — signup still works exactly as before; what's new is
+that the resulting tenant now can't actually *use* the workspace until billing completes.
+
+### Local plan catalog vs. Razorpay Plan
+
+Two related but different things:
+
+1. **`subscription_plans`** — this app's own catalog. Super Admin manages it entirely (create,
+   edit price/name/features, activate/deactivate). Never talks to Razorpay.
+2. **A Razorpay Plan** — created directly in the Razorpay Dashboard, not through this app.
+   Razorpay Plans can't be edited or deleted once created, so this app never attempts to.
+
+Every local plan references one Razorpay Plan via `razorpay_plan_id` — entered manually by Super
+Admin when registering the local plan (mirroring the price/cycle they already set up on Razorpay's
+side), the same way Step 8's Meta Pixel ID is entered rather than auto-discovered. `price` is
+stored in the smallest currency unit (paise for INR), matching Razorpay's own `amount`
+representation — never a float. Deactivating a local plan (`is_active: false`) only removes it
+from what *new* subscribers can select; an existing subscriber on a since-deactivated plan is
+completely unaffected until they're moved to a different plan through a normal plan-change.
+
+### Tenant billing — Tenant Admin only, own tenant always
+
+| Route | Notes |
+|---|---|
+| `GET /api/billing/plans` | Every **active** local plan. Reachable regardless of the tenant's own status — this is precisely how a `pending_payment` tenant sees what it can subscribe to. |
+| `GET /api/billing/subscription` | `{ "subscription": {...} \| null, "plan": {...} \| null }` — the tenant's own current subscription (one row, always — §A) plus a plan summary so the UI doesn't need a second call. `null` before the tenant has ever subscribed. |
+| `GET /api/billing/payments` | The tenant's own payment ledger, most recent first. |
+| `POST /api/billing/subscribe` | `{ "planId": 3 }`. Only valid once — `409 SUBSCRIPTION_ALREADY_EXISTS` if a subscription already exists (regardless of its status; a plan **change** is a different endpoint). See the signup flow below. |
+| `PATCH /api/billing/subscription/plan` | `{ "planId": 3, "timing": "now" \| "cycle_end" }`. §J — always the caller's own tenant (`req.tenantId` from the verified token; `tenant_id` is never accepted from the request body anywhere in this API). |
+
+None of these five routes are gated by `requireActiveTenant` — they're precisely the "routes
+required to complete billing" §I says must stay reachable no matter the tenant's status.
+
+### Signup → Checkout → Webhook flow (§C)
+
+```
+Google Sign-In (Step 3, unchanged)
+  → tenant created, status = pending_payment (unchanged default)
+  → GET /api/billing/plans → tenant picks one
+  → POST /api/billing/subscribe
+      → backend resolves the LOCAL plan's razorpay_plan_id (never trusts a client-supplied one)
+      → creates/reuses a Razorpay Customer (the signing admin's own name/email)
+      → creates the Razorpay Subscription against that razorpay_plan_id
+      → stores one local `subscriptions` row (status as Razorpay returned it, e.g. "created")
+      → returns ONLY { razorpayKeyId, razorpaySubscriptionId, planName, amount, currency }
+  → frontend opens Razorpay's own hosted Checkout (Checkout.js) with that subscription_id
+      → Razorpay collects payment details directly — this backend never sees card data (§E)
+  → Checkout's `handler` callback fires in the browser — NEVER trusted as activation (§G/§H);
+    the frontend polls GET /api/billing/subscription until the status changes
+  → Razorpay sends a signed webhook (subscription.authenticated, then .activated, ...)
+  → ONLY once that webhook is verified does tenants.status become "active"
+```
+
+`razorpayKeyId` is Razorpay's own **public** key, meant to be visible to the browser (Checkout.js
+is designed to run with it) — the matching `key_secret` never leaves this backend
+(`razorpayClient.js`, Basic Auth on every outbound Razorpay call).
+
+### Webhook — shared across every tenant, no authentication
+
+`POST /api/razorpay/webhook` — same raw-body-capture and app.js exclusion pattern as Meta's
+webhook (Step 7): `X-Razorpay-Signature` is an HMAC-SHA256 of the *exact raw request bytes* using
+`RAZORPAY_WEBHOOK_SECRET` (a value you set when configuring the webhook itself — distinct from
+`RAZORPAY_KEY_SECRET`), verified with `crypto.timingSafeEqual`. A missing/incorrect signature is
+`403` and logged to `webhook_logs` (`source: "razorpay"`) — never processed further. There is no
+GET handshake for Razorpay's webhook (unlike Meta's) — the URL and secret are simply entered once
+in the Dashboard.
+
+**Events actually handled, and why** (§F — deliberately not every event Razorpay can send):
+
+| Event(s) | What happens |
+|---|---|
+| `subscription.authenticated`, `.activated`, `.charged`, `.completed`, `.updated`, `.pending`, `.halted`, `.paused`, `.resumed`, `.cancelled` | All handled by **one** reconciliation function: Razorpay's subscription entity always carries its own current `status`, which this schema's `subscriptions.status` ENUM mirrors verbatim — read directly rather than hand-mapping each event name. Also updates `subscriptions.plan_id` (only when `entity.plan_id` resolves to a known local plan) and `subscriptions.current_period_end`, and derives `tenants.status` from the reconciled subscription status (see mapping below). |
+| `subscription.charged` (additionally) | Also carries a `payment` entity in the same payload — recorded into `payments` here rather than via a separate `payment.captured` handler, since Phase 1 has no non-subscription payment flow for that to apply to. |
+| `payment.failed` | Recorded into `payments` (`status: "failed"`) for the ledger only — **never** changes `subscriptions.status` or `tenants.status` by itself (§L: a failed attempt can be followed by a successful retry; what governs access is the subscription's own status). |
+| Anything else (`payment.authorized`, `refund.*`, `order.paid`, ...) | Acknowledged `200`, otherwise ignored — no local state this app tracks depends on them. |
+
+**`subscriptions.status` → `tenants.status` mapping** (the only place `tenants.status` is written
+once a tenant has a subscription at all):
+
+| Razorpay subscription status | tenants.status |
+|---|---|
+| `active` | `active` |
+| `cancelled`, `completed`, `expired` | `canceled` |
+| `halted`, `paused` | `suspended` |
+| `created`, `authenticated`, `pending` | `pending_payment` |
+
+Authenticating (the mandate succeeding) is deliberately **not** enough to activate — only the
+subscription's own `active` status is (§H: "do not activate if... webhook signature invalid,
+payment/authorization failed, or subscription is not in an appropriate active state").
+
+### Idempotency (§M) — two layers
+
+1. **Event-level**: `razorpay_webhook_events.razorpay_event_id` is `UNIQUE`. Razorpay's
+   `X-Razorpay-Event-Id` header stays identical across every retry of the *same* event (falls back
+   to a derived `event:created_at:entityId` key in the rare case that header is absent). The
+   idempotency-insert and every local state change it causes are committed in **one transaction**
+   — if reconciliation throws partway through, the whole thing (including the idempotency marker)
+   rolls back, so a Razorpay retry correctly reprocesses from scratch rather than being silently
+   swallowed by a marker for work that never actually finished.
+2. **Payment-level**: `payments.razorpay_payment_id` is separately `UNIQUE` (`INSERT IGNORE`) — a
+   payment already recorded is never duplicated even if it somehow arrived via two different
+   event deliveries.
+
+### Failure handling (§N)
+
+A genuine processing error (not a rejected signature, not an intentionally-ignored event type)
+propagates past the controller and returns a non-2xx — deliberately **not** swallowed into a `200`
+the way an individual failed entry is in Meta's batched webhook (Step 7): Razorpay delivers exactly
+one event per request, so letting Razorpay's own retry mechanism try again later is the correct
+behavior here, and the transactional rollback above guarantees that retry starts clean. A failed
+Razorpay API call (subscription creation, plan change, pause, cancel) is never allowed to leave
+partial local state — the local DB write only ever happens after the Razorpay call has already
+succeeded (`subscribe()`), or the local `tenants.status` write only happens after a synchronous,
+successful, backend-authenticated Razorpay API response (`suspend()`/`cancel()` — see below).
+
+### Tenant subscription gating (§I)
+
+`requireActiveTenant` middleware (`backend/src/middlewares/requireActiveTenant.js`) — re-reads the
+tenant's current status from the database on every request (never trusts the access token's
+claims, since this state can change authoritatively at any moment via webhook). Applied to every
+CRM-interior route: leads, lead statuses/sources, products, custom fields, users, dashboard, web
+forms, and the Meta Lead Ads/CAPI admin routes. **Not** applied to: `/api/auth/*`, `/api/billing/*`
+(must stay reachable to let a blocked tenant fix it), `GET /api/tenant` (so the frontend can read
+its own tenant's status to render the right screen), or any Super Admin route (§H: Super Admin is
+never blocked by any tenant's subscription state — enforced by an explicit `role === "super_admin"`
+bypass at the top of the middleware, not by omission).
+
+### Super Admin override (§K)
+
+`billingService.js`'s `getSubscriptionForTenant`/`changePlan`/`suspend`/`resume`/`cancel` are the
+exact same functions the Tenant Admin's own routes call — only the route layer differs in which
+`tenantId` it's allowed to pass in (`req.tenantId` from the token vs. `req.params.id`, Super Admin
+only). `suspend`/`cancel` call Razorpay's real **pause**/**cancel** subscription actions, not a
+local-only flag — a "suspended" tenant is genuinely not billed further, not just blocked from the
+CRM while Razorpay keeps charging it. Unlike webhook-driven activation, these DO update
+`tenants.status` immediately: the trigger is a synchronous, this-backend's-own-Basic-Auth-
+authenticated Razorpay API response, not an unverified browser redirect — there's nothing further
+to wait on the way there is for a checkout flow.
+
+### Plan changes — immediate vs. end-of-cycle (§J)
+
+`timing: "now"` or `timing: "cycle_end"` is chosen by the caller on every request — Razorpay's own
+two supported values for `schedule_change_at`, nothing else invented (no proration, no custom
+effective dates). **`subscriptions.plan_id` is never updated by the plan-change request itself,
+regardless of which timing was chosen** — only a subsequent `subscription.updated` webhook,
+carrying Razorpay's own confirmed `entity.plan_id`, ever writes it. This means even a `"now"`
+request shows the OLD plan in `GET /api/billing/subscription` until Razorpay's webhook actually
+confirms the switch — deliberately conservative, since the alternative (optimistically writing the
+new plan_id for `"now"`) would violate §J's "do not claim a plan is immediately active" the moment
+Razorpay's own processing takes even a few seconds.
+
+### Local testing without a real Razorpay account
+
+Same approach as Steps 7/8: only `razorpayClient.js`'s outbound calls (the true external boundary
+— no real Razorpay Test Mode account exists in this sandboxed environment) were mocked; signature
+verification, idempotency, tenant/plan resolution, the full activation/gating/reconciliation state
+machine, and every failure path were all exercised for real against the local database and a
+running instance of this app. A valid webhook signature can be generated locally with nothing more
+than your own `RAZORPAY_WEBHOOK_SECRET`:
+```bash
+node -e "console.log(require('crypto').createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET).update(JSON.stringify({event:'subscription.activated',payload:{}})).digest('hex'))"
+```
+**Real Razorpay webhook delivery** requires a publicly reachable HTTPS endpoint (Razorpay cannot
+reach `localhost`) — for genuine end-to-end testing against Razorpay Test Mode, expose the local
+server through a secure tunnel (e.g. ngrok) or a staging deployment, and register that URL plus a
+real webhook secret in the Razorpay Dashboard.
+
 ## Everything else
 
 Any other path currently returns `404`:
@@ -612,4 +790,4 @@ Any other path currently returns `404`:
 { "error": "Not found: GET /whatever" }
 ```
 
-No Razorpay, WhatsApp, YaGo, or other later-phase routes exist yet.
+No WhatsApp, YaGo, or other later-phase routes exist yet.

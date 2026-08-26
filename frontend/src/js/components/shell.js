@@ -3,7 +3,13 @@ import { initials } from "./ui.js";
 
 const NAV = {
   super_admin: [
-    { group: "Platform", items: [{ key: "overview", label: "Overview", href: "/public/super-admin/index.html", icon: "◆" }] },
+    {
+      group: "Platform",
+      items: [
+        { key: "overview", label: "Overview", href: "/public/super-admin/index.html", icon: "◆" },
+        { key: "plans", label: "Plan Catalog", href: "/public/super-admin/plans.html", icon: "$" },
+      ],
+    },
   ],
   tenant_admin: [
     {
@@ -61,14 +67,45 @@ function brandBlockHtml(role) {
     </div>`;
 }
 
+// Step 9 §I: UX-only gate (the backend's requireActiveTenant middleware is
+// the actual enforcement — this only prevents the user from ever landing
+// on a page whose API calls would just 403). super_admin is never gated
+// (§H). tenant_admin is sent to the one page that can fix it; tenant_employee
+// has no billing capability at all, so they go to a plain explanatory page
+// instead of one they can't act on.
+function redirectIfTenantInactive(user, allowInactiveTenant) {
+  if (allowInactiveTenant || user.role === "super_admin") return false;
+  if (!user.tenantStatus || user.tenantStatus === "active") return false;
+
+  const destination = user.role === "tenant_admin" ? "/public/admin/billing.html" : "/public/employee/account-inactive.html";
+  if (window.location.pathname === destination) return false;
+  window.location.replace(destination);
+  return true;
+}
+
 /**
  * Renders the sidebar/topbar shell for the current role into #shell-root
  * and returns the empty #page-content element the page should render its
  * own content into. Not a router — every nav link is a plain <a> to a
  * full page (§K: no custom framework).
+ *
+ * allowInactiveTenant: pass true only from the one page a blocked tenant
+ * must still be able to reach (billing.html / account-inactive.html) —
+ * everywhere else, a pending_payment/suspended/canceled tenant is
+ * redirected there instead of rendering.
  */
-export function mountShell({ activeKey, title }) {
+export function mountShell({ activeKey, title, allowInactiveTenant = false }) {
   const user = getCurrentUser();
+  if (redirectIfTenantInactive(user, allowInactiveTenant)) {
+    // window.location.replace() doesn't halt script execution synchronously
+    // — the calling page's main() keeps running for a moment. Returning a
+    // detached element (rather than null) means its `content.innerHTML = …`
+    // and any awaited API call are harmless no-ops instead of a thrown
+    // TypeError, without needing every page to add its own null-check
+    // before the (imminent) navigation actually lands.
+    return document.createElement("div");
+  }
+
   const role = user.role;
   const groups = NAV[role] || [];
   if (role === "super_admin") document.documentElement.setAttribute("data-app-mode", "platform");

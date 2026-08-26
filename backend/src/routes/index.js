@@ -13,6 +13,8 @@ const superAdminRoutes = require("./superAdmin.routes");
 const webFormRoutes = require("./webForm.routes");
 const publicFormRoutes = require("./publicForm.routes");
 const metaRoutes = require("./meta.routes");
+const billingRoutes = require("./billing.routes");
+const razorpayWebhookRoutes = require("./razorpayWebhook.routes");
 
 const router = express.Router();
 
@@ -30,9 +32,10 @@ router.use("/api/super-admin", superAdminRoutes);
 router.use("/api/web-forms", webFormRoutes);
 router.use("/api/public/lead-form", publicFormRoutes);
 router.use("/api/meta", metaRoutes);
+router.use("/api/billing", billingRoutes);
+router.use("/api/razorpay/webhook", razorpayWebhookRoutes);
 
 // Future route namespaces (added in later steps, per the approved spec §22):
-// router.use("/api/billing", billingRoutes);
 // ...
 
 module.exports = router;

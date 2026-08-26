@@ -1,4 +1,6 @@
 const superAdminService = require("../services/superAdminService");
+const subscriptionPlanService = require("../services/subscriptionPlanService");
+const billingService = require("../services/billingService");
 const asyncHandler = require("../utils/asyncHandler");
 
 const listTenants = asyncHandler(async (req, res) => {
@@ -23,4 +25,66 @@ const overview = asyncHandler(async (req, res) => {
   res.json(await superAdminService.platformOverview());
 });
 
-module.exports = { listTenants, getTenant, updateEmployeeLimit, updateStatus, overview };
+// ---- Step 9: local plan catalog management (§B/§P) ----
+
+const listPlans = asyncHandler(async (req, res) => {
+  res.json({ plans: await subscriptionPlanService.listAll() });
+});
+
+const createPlan = asyncHandler(async (req, res) => {
+  const plan = await subscriptionPlanService.create(req.body);
+  res.status(201).json({ plan });
+});
+
+const updatePlan = asyncHandler(async (req, res) => {
+  const plan = await subscriptionPlanService.update(req.params.id, req.body);
+  res.json({ plan });
+});
+
+const setPlanActive = asyncHandler(async (req, res) => {
+  const plan = await subscriptionPlanService.setActive(req.params.id, req.body?.isActive);
+  res.json({ plan });
+});
+
+// ---- Step 9: any-tenant subscription override (§K) — reuses the exact
+// same billingService functions the Tenant Admin's own routes call;
+// authorization (any tenant vs. own tenant only) is the only difference,
+// and it lives entirely in which tenantId this route passes in
+// (req.params.id here, vs. req.tenantId on the tenant-facing routes). ----
+
+const getTenantSubscription = asyncHandler(async (req, res) => {
+  res.json(await billingService.getSubscriptionForTenant(req.params.id));
+});
+
+const changeTenantPlan = asyncHandler(async (req, res) => {
+  res.json(await billingService.changePlan(req.params.id, req.body));
+});
+
+const suspendTenantSubscription = asyncHandler(async (req, res) => {
+  res.json({ tenant: await billingService.suspend(req.params.id) });
+});
+
+const resumeTenantSubscription = asyncHandler(async (req, res) => {
+  res.json({ tenant: await billingService.resume(req.params.id) });
+});
+
+const cancelTenantSubscription = asyncHandler(async (req, res) => {
+  res.json({ tenant: await billingService.cancel(req.params.id) });
+});
+
+module.exports = {
+  listTenants,
+  getTenant,
+  updateEmployeeLimit,
+  updateStatus,
+  overview,
+  listPlans,
+  createPlan,
+  updatePlan,
+  setPlanActive,
+  getTenantSubscription,
+  changeTenantPlan,
+  suspendTenantSubscription,
+  resumeTenantSubscription,
+  cancelTenantSubscription,
+};

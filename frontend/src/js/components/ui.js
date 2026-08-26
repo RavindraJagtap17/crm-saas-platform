@@ -31,6 +31,19 @@ export function formatDateTime(value) {
   return d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+// Step 9: price/amount fields are stored server-side in the smallest
+// currency unit (paise for INR), matching Razorpay's own representation —
+// divide by 100 only here, at display time, never in storage or transit.
+export function formatMoney(smallestUnitAmount, currency = "INR") {
+  if (smallestUnitAmount === null || smallestUnitAmount === undefined) return "—";
+  const amount = Number(smallestUnitAmount) / 100;
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${currency}`;
+  }
+}
+
 export function formatMonthLabel(yyyyMm) {
   const [y, m] = yyyyMm.split("-");
   return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString(undefined, { month: "short", year: "2-digit" });

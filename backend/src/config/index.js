@@ -26,6 +26,9 @@ const REQUIRED = [
   "META_APP_ID",
   "META_APP_SECRET",
   "META_WEBHOOK_VERIFY_TOKEN",
+  "RAZORPAY_KEY_ID",
+  "RAZORPAY_KEY_SECRET",
+  "RAZORPAY_WEBHOOK_SECRET",
 ];
 
 function readList(name, fallback = []) {
@@ -91,6 +94,12 @@ const config = {
     // authorizes — defaults to this API's own origin so it works out of
     // the box in any environment without a separate var to keep in sync.
     redirectUri: process.env.META_REDIRECT_URI || `${process.env.APP_URL || "http://localhost:4000"}/api/meta/oauth/callback`,
+  },
+
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID,
+    keySecret: process.env.RAZORPAY_KEY_SECRET,
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
   },
 };
 
