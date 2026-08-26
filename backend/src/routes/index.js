@@ -10,6 +10,8 @@ const tenantRoutes = require("./tenant.routes");
 const userRoutes = require("./user.routes");
 const dashboardRoutes = require("./dashboard.routes");
 const superAdminRoutes = require("./superAdmin.routes");
+const webFormRoutes = require("./webForm.routes");
+const publicFormRoutes = require("./publicForm.routes");
 
 const router = express.Router();
 
@@ -24,6 +26,8 @@ router.use("/api/tenant", tenantRoutes);
 router.use("/api/users", userRoutes);
 router.use("/api/dashboard", dashboardRoutes);
 router.use("/api/super-admin", superAdminRoutes);
+router.use("/api/web-forms", webFormRoutes);
+router.use("/api/public/lead-form", publicFormRoutes);
 
 // Future route namespaces (added in later steps, per the approved spec §22):
 // router.use("/api/billing", billingRoutes);

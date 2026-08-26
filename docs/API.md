@@ -254,6 +254,98 @@ across every tenant._
   table or Razorpay integration yet, so `tenants.status` (which already gates workspace access) is
   the only thing to suspend/cancel against right now.
 
+## Website enquiry form (Step 6)
+
+Two audiences, two different sets of rules.
+
+### Admin: managing forms — GET/POST /api/web-forms, PATCH /api/web-forms/:id
+_Tenant Admin only_ — same pattern as statuses/sources/products.
+
+```json
+// POST /api/web-forms
+{ "name": "Homepage Contact Form", "sourceId": 3, "productId": 7, "allowedDomains": ["example.com", "www.example.com"] }
+```
+`sourceId` is required (which of the tenant's own lead sources this form's submissions are tagged
+with); `productId` is optional; `allowedDomains` is optional at creation (defaults to `[]`) —
+bare hostnames only, no `https://` or path. The response includes a generated `formKey` (32
+random hex characters) — this is the public, opaque identifier embedded on the tenant's website;
+it is never derived from or exposed alongside the tenant's id.
+
+### Public: the form itself — no authentication, reachable from any origin
+
+**`GET /api/public/lead-form/:formKey`** — returns just enough to render the form: the form's
+name and a `fields` array (the 3 core fields plus the tenant's active custom field definitions,
+each with `key`/`label`/`type`/`options`). No tenant id, no internal source/product ids, no
+account details.
+
+**`POST /api/public/lead-form/:formKey/submit`** — creates a lead through the same
+`leadService.createLead` used everywhere else in the app (§H of the spec): same phone
+normalization, same duplicate detection scoped to that tenant only, same custom-field validation
+against that tenant's own definitions, same "starts unassigned" rule. `tenantId`, `sourceId`,
+`productId`, `statusId`, `assignedTo` — anything in the request body — are never read; the tenant,
+source, and product always come from the resolved form, never the caller.
+
+```json
+// Request
+{ "name": "Jane Doe", "phone": "+91 98765 43210", "email": "jane@example.com",
+  "customFields": { "budget": "High" }, "hp_company_website": "" }
+
+// Response — 201 (always this shape, honeypot-triggered or not — see below)
+{ "success": true, "message": "Thanks — we'll be in touch shortly." }
+```
+
+An unknown, malformed, or inactive `formKey` returns `404` on both routes — deliberately
+indistinguishable from each other, so a response can't be used to probe which formKeys exist.
+
+**Honeypot** — the hidden field is named `hp_company_website` (a literal shared by convention
+between `backend/src/services/publicFormService.js` and the two embed clients — deliberately not
+exposed via the public config response). If it's non-empty, the response is **exactly the same
+201 success shape** as a real submission — no lead is created, but nothing about the response
+reveals that detection happened.
+
+**Rate limiting** — 10 submissions per IP per 10-minute window on the `/submit` route (not the
+config `GET`). Over the limit: `429 { "error": "Too many submissions from this network. Please
+try again later." }`.
+
+**Domain allowlist / Origin handling** — see the doc comment in
+`backend/src/middlewares/checkFormOrigin.js` for the full reasoning; summarized:
+- Script embed: `Origin` is the host page's own origin (the widget's `fetch()` runs in that
+  page's context) — checked against that form's `allowedDomains`.
+- Iframe embed: the form page is served from **this app's own origin**, so its `fetch()` always
+  carries Origin = this app's frontend URL, regardless of which site iframes it — that specific
+  origin is trusted directly rather than checked against `allowedDomains`, since Origin
+  structurally cannot reveal the parent page's domain from inside an iframe. The formKey being a
+  random, non-public 32-character value is the real access control for iframe usage.
+- **Local/direct testing**: browsers are the only clients that send `Origin`/`Referer`
+  automatically. Outside production (`NODE_ENV=development` or unset), a request with neither
+  header is allowed through to the rest of the checks — this is what makes `curl`/Postman/local
+  testing possible without a browser. In production, a request with neither header is rejected
+  (`403 ORIGIN_REQUIRED`) — a genuine browser submission, script or iframe, always sends one.
+
+### Embedding
+
+**Script (primary)** — self-contained, dependency-free, renders into a Shadow DOM so host-site
+CSS can't reach in or leak out:
+```html
+<script
+  src="https://app.yourdomain.com/public/embed/crm-lead-widget.js"
+  data-form-key="FORM_KEY"
+  data-api-base="https://api.yourdomain.com"
+></script>
+```
+`data-api-base` is required whenever the frontend and API are on different origins (the normal
+case for this project — see `docs/DEPLOYMENT.md`); without it the widget assumes the API shares
+its own script's origin, which is usually wrong. The exact tag to paste — with both values already
+filled in — is generated on the tenant's **Website Forms** admin page.
+
+**Iframe (fallback)**:
+```html
+<iframe
+  src="https://app.yourdomain.com/public/embed/lead-form.html?formKey=FORM_KEY"
+  width="100%" height="520" style="border:0"
+></iframe>
+```
+
 ## Everything else
 
 Any other path currently returns `404`:
@@ -262,4 +354,4 @@ Any other path currently returns `404`:
 { "error": "Not found: GET /whatever" }
 ```
 
-No Meta, Meta CAPI, Razorpay, or website-enquiry-form routes exist yet.
+No Meta, Meta CAPI, Razorpay, WhatsApp, or other later-phase routes exist yet.

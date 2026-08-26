@@ -58,6 +58,12 @@ export const dashboardApi = {
   summary: () => api.get("/api/dashboard/summary"),
 };
 
+export const webFormsApi = {
+  list: () => api.get("/api/web-forms"),
+  create: (body) => api.post("/api/web-forms", body),
+  update: (id, body) => api.patch(`/api/web-forms/${id}`, body),
+};
+
 export const superAdminApi = {
   overview: () => api.get("/api/super-admin/overview"),
   listTenants: () => api.get("/api/super-admin/tenants"),

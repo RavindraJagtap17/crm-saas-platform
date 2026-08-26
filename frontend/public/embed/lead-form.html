@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Enquiry Form</title>
+  <link rel="stylesheet" href="../../src/css/tokens.css" />
+  <link rel="stylesheet" href="../../src/css/base.css" />
+  <link rel="stylesheet" href="../../src/css/components.css" />
+  <script src="../../config.js"></script>
+  <style>
+    /* Standalone page meant to live inside an <iframe> on a third-party
+       site — intentionally has no app shell, sidebar, or navigation. */
+    body { background: var(--bg-surface); }
+    .embed-wrap { max-width: 480px; margin: 0 auto; padding: var(--space-6) var(--space-5); }
+    .hp-field { position: absolute; left: -9999px; top: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div class="embed-wrap" id="embed-root">
+    <p class="text-secondary">Loading form…</p>
+  </div>
+  <script type="module" src="../../src/js/pages/embed-lead-form.js"></script>
+</body>
+</html>

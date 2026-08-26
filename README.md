@@ -9,15 +9,16 @@ step at a time.
 
 ## Status
 
-**Steps 1–5 complete: scaffold, database schema, authentication, the lead engine, and the frontend.**
+**Steps 1–6 complete: scaffold, database schema, authentication, the lead engine, the frontend, and the website enquiry form.**
 
 - Step 1 — Express scaffold, folder structure, `/health`.
 - Step 2 — Core MySQL schema via versioned migrations (tenants, roles, users, leads, and related tables); roles seeded.
 - Step 3 — Google Sign-In, JWT sessions with rotating/revocable refresh tokens, tenant-scope and role-based authorization middleware, self-service first Tenant Admin signup.
 - Step 4 — Lead CRUD, manual entry, status pipeline, sources, products, dynamic custom fields, duplicate detection/flagging, manual assignment, call activities, and status history — all tenant-scoped and role-gated.
 - Step 5 — Role-specific frontend (Super Admin, Tenant Admin, Employee) in plain HTML/CSS/JS, a shared design system, white-label branding, dashboards, and full lead-management UI. A few small backend additions (tenant branding, employee invitation, dashboard aggregates, Super Admin tenant management) were built alongside it — see `docs/API.md`.
+- Step 6 — Universal website enquiry form: an embeddable script widget (Shadow DOM–isolated) and an iframe fallback, both backed by one public submission API that reuses the Step 4 lead engine unchanged — same duplicate detection, same custom-field validation, same tenant scoping. Per-tenant domain allowlisting, honeypot, and IP rate limiting. Tenant Admins manage forms from a new **Website Forms** page.
 
-Still not built: the public website enquiry form, Meta Lead Ads/CAPI, Razorpay billing.
+Still not built: Meta Lead Ads/CAPI, Razorpay billing.
 
 ## Tech stack
 
@@ -48,7 +49,7 @@ frontend/
 │   ├── admin/                  Tenant Admin: dashboard, leads, statuses, sources, products,
 │   │                            custom fields, employees, branding, billing
 │   ├── employee/                Employee: dashboard, my leads, lead detail
-│   └── embed/                    Reserved for the website enquiry widget (not built yet)
+│   └── embed/                    crm-lead-widget.js (script embed) + lead-form.html (iframe fallback)
 └── src/
     ├── css/                  tokens.css (design tokens) → base.css → components.css → layout.css
     └── js/
@@ -63,6 +64,12 @@ No bundler, no framework — every page is `<script type="module">` importing pl
 The access token is kept in memory only (never localStorage/sessionStorage); each page
 re-establishes its own session on load via the httpOnly refresh cookie, so the refresh flow is
 exercised on every page view, not just at login.
+
+One deliberate exception: `public/embed/crm-lead-widget.js` is a plain IIFE, not a module — it has
+to work when a third-party site drops it in via a bare `<script src="...">` tag, so it can't rely
+on `type="module"` or import anything else in `src/js/`. `public/embed/lead-form.html`'s own
+controller (the iframe fallback), by contrast, is served from this app's own origin and follows
+the normal module pattern like every other page.
 
 ## Local development
 
@@ -98,6 +105,14 @@ explicit rewrite instead — the redirect variant drops query strings (e.g. `lea
 loses `?id=5` on redirect), which broke deep-linking to a specific lead. This is a local-dev-server
 setting only; it doesn't change what the actual `.html` files or their links contain, and a plain
 static host (Plesk included) serving the files as-is needs no equivalent configuration.
+
+**Testing the website enquiry form locally** — create a form on the **Website Forms** admin page
+(needs at least one Lead Source to exist first). `localhost` is accepted as an allowed domain
+specifically so a local test page can embed the widget/iframe and have the domain check actually
+pass (every other hostname must look like a real domain — bare `localhost` is a deliberate,
+narrow exception, not a loosened check). See `docs/API.md`'s "Website enquiry form" section for
+exactly how Origin is validated, including how `curl`/Postman testing works with no `Origin`
+header at all outside production.
 
 ## Documentation
 

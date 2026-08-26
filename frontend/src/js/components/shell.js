@@ -20,6 +20,7 @@ const NAV = {
         { key: "sources", label: "Lead Sources", href: "/public/admin/sources.html", icon: "⌘" },
         { key: "products", label: "Products", href: "/public/admin/products.html", icon: "▣" },
         { key: "custom-fields", label: "Custom Fields", href: "/public/admin/custom-fields.html", icon: "✎" },
+        { key: "web-forms", label: "Website Forms", href: "/public/admin/web-forms.html", icon: "⌗" },
       ],
     },
     {
