@@ -106,6 +106,13 @@ function buildFilterWhere(tenantId, { restrictToUserId, filters }) {
     clauses.push("is_duplicate = ?");
     params.push(!!filters.isDuplicate);
   }
+  if (filters.q) {
+    // Tenant-scoped substring match on the fields a user would actually
+    // search by — never crosses the tenant_id clause already above.
+    clauses.push("(name LIKE ? OR phone LIKE ? OR email LIKE ?)");
+    const like = `%${filters.q}%`;
+    params.push(like, like, like);
+  }
 
   return { where: clauses.join(" AND "), params };
 }
@@ -157,6 +164,79 @@ async function remove(tenantId, id) {
   return result.affectedRows > 0;
 }
 
+// ---- Dashboard aggregates (§E) — grouped counts, not full row fetches,
+// so this scales past the 100-row page cap the list endpoint is capped at.
+
+async function sourceBreakdown(tenantId) {
+  const [rows] = await pool.query(
+    `SELECT s.id AS source_id, s.name, COUNT(l.id) AS count
+     FROM lead_sources s
+     LEFT JOIN leads l ON l.source_id = s.id AND l.tenant_id = s.tenant_id
+     WHERE s.tenant_id = ?
+     GROUP BY s.id, s.name
+     ORDER BY count DESC`,
+    [tenantId]
+  );
+  return rows;
+}
+
+async function monthlyVolume(tenantId, months = 6) {
+  const [rows] = await pool.query(
+    `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS count
+     FROM leads
+     WHERE tenant_id = ? AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+     GROUP BY month
+     ORDER BY month ASC`,
+    [tenantId, months]
+  );
+  return rows;
+}
+
+async function statusBreakdown(tenantId, { restrictToUserId } = {}) {
+  const clauses = ["l.tenant_id = ?"];
+  const params = [tenantId];
+  if (restrictToUserId) {
+    clauses.push("l.assigned_to = ?");
+    params.push(restrictToUserId);
+  }
+  const [rows] = await pool.query(
+    `SELECT st.id AS status_id, st.name, st.is_final, COUNT(l.id) AS count
+     FROM lead_statuses st
+     LEFT JOIN leads l ON l.status_id = st.id AND ${clauses.join(" AND ")}
+     WHERE st.tenant_id = ?
+     GROUP BY st.id, st.name, st.is_final
+     ORDER BY st.sort_order ASC`,
+    [...params, tenantId]
+  );
+  return rows;
+}
+
+async function tenantTotals(tenantId) {
+  const [[row]] = await pool.query(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(assigned_to IS NULL) AS unassigned,
+       SUM(is_duplicate) AS duplicates
+     FROM leads WHERE tenant_id = ?`,
+    [tenantId]
+  );
+  return { total: row.total, unassigned: row.unassigned || 0, duplicates: row.duplicates || 0 };
+}
+
+async function employeeTotals(tenantId, userId) {
+  const [[row]] = await pool.query(
+    `SELECT COUNT(*) AS assigned FROM leads WHERE tenant_id = ? AND assigned_to = ?`,
+    [tenantId, userId]
+  );
+  const [[calls]] = await pool.query(
+    `SELECT COUNT(*) AS callsThisMonth FROM lead_activities
+     WHERE tenant_id = ? AND user_id = ? AND type = 'call'
+       AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`,
+    [tenantId, userId]
+  );
+  return { assigned: row.assigned, callsThisMonth: calls.callsThisMonth };
+}
+
 module.exports = {
   findById,
   findEarliestByPhoneForUpdate,
@@ -167,4 +247,9 @@ module.exports = {
   updateStatus,
   updateAssignment,
   remove,
+  sourceBreakdown,
+  monthlyVolume,
+  statusBreakdown,
+  tenantTotals,
+  employeeTotals,
 };

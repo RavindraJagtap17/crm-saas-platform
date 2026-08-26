@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in · CRM</title>
+  <link rel="stylesheet" href="../../src/css/tokens.css" />
+  <link rel="stylesheet" href="../../src/css/base.css" />
+  <link rel="stylesheet" href="../../src/css/components.css" />
+  <link rel="stylesheet" href="../../src/css/layout.css" />
+  <script src="../../config.js"></script>
+</head>
+<body>
+  <main class="auth-page">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="auth-mark" aria-hidden="true">C</div>
+        <h1 class="auth-title">Welcome back</h1>
+        <p class="auth-subtitle">Sign in to your CRM workspace</p>
+      </div>
+
+      <div class="card card-pad">
+        <div id="alert-slot"></div>
+        <div class="gsi-slot" id="gsi-button"></div>
+        <div id="gsi-fallback-note" class="hint" style="text-align:center;margin-top:var(--space-3);display:none">
+          Google Sign-In isn't configured for this environment yet (no <code>GOOGLE_CLIENT_ID</code> set).
+        </div>
+      </div>
+
+      <p class="auth-footer">
+        New agency? <a href="./signup.html">Create your agency</a>
+      </p>
+    </div>
+  </main>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="../../src/js/pages/auth-signin.js"></script>
+</body>
+</html>

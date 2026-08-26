@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Create your agency · CRM</title>
+  <link rel="stylesheet" href="../../src/css/tokens.css" />
+  <link rel="stylesheet" href="../../src/css/base.css" />
+  <link rel="stylesheet" href="../../src/css/components.css" />
+  <link rel="stylesheet" href="../../src/css/layout.css" />
+  <script src="../../config.js"></script>
+</head>
+<body>
+  <main class="auth-page">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="auth-mark" aria-hidden="true">C</div>
+        <h1 class="auth-title">Create your agency</h1>
+        <p class="auth-subtitle">Set up a new workspace — you'll be its first Admin</p>
+      </div>
+
+      <div class="card card-pad">
+        <div id="alert-slot"></div>
+        <form id="signup-form" novalidate>
+          <div class="field" id="agency-field">
+            <label class="label" for="agencyName">Agency name</label>
+            <input class="input" id="agencyName" name="agencyName" placeholder="Acme Leads Co." autocomplete="organization" required />
+            <div class="field-error" hidden></div>
+          </div>
+          <div class="auth-divider">then sign in with Google to finish</div>
+          <div class="gsi-slot" id="gsi-button"></div>
+        </form>
+      </div>
+
+      <p class="auth-footer">
+        Already have an account? <a href="./index.html">Sign in</a>
+      </p>
+    </div>
+  </main>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="../../src/js/pages/auth-signup.js"></script>
+</body>
+</html>

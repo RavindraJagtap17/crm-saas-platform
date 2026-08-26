@@ -26,6 +26,13 @@ GET /health
 }
 ```
 
+## Error responses
+
+Every error is `{ "error": "human-readable message" }`. When the app raised the error on purpose
+for a condition a client might want to branch on (not a generic 500), it also includes a stable
+`"code"` — e.g. `ACCOUNT_NOT_FOUND`, `EMPLOYEE_LIMIT_REACHED`. Codes are never present on an
+unexpected `500`, only on errors the app explicitly identified.
+
 ## Authentication (Step 3)
 
 Google Sign-In is the only identity provider — there is no password field or password-reset flow
@@ -157,7 +164,8 @@ All fields optional except that at least one of `name`/`phone`/`email` must be p
 automatically on first use. The lead always starts with `statusId: null` and `assignedTo: null`.
 
 **`GET /api/leads` query params** — `page` (default 1), `pageSize` (default 20, max 100, both
-clamped rather than rejected if malformed), `statusId`, `sourceId`, `productId`, `assignedTo`
+clamped rather than rejected if malformed), `q` (substring match against name/phone/email, added
+in Step 5 for the lead list's search box), `statusId`, `sourceId`, `productId`, `assignedTo`
 (Admin only), `isDuplicate` (`true`/`false`).
 
 **Duplicate detection** (§H) runs on every creation: the phone number is normalized (digits only)
@@ -190,6 +198,62 @@ is no file/upload type, and none can be requested (server validates against this
 `select` requires a non-empty `options` array of strings. `fieldKey` and `fieldType` cannot be
 changed after creation — only `label`, `options` (select only), and `isActive`.
 
+## Tenant, employees, and dashboard (Step 5)
+
+These four small additions exist because the Step 5 UI genuinely had nothing to call without
+them — Steps 1–4 built auth and the lead engine, but never tenant branding, employee invitation,
+Super Admin tenant management, or dashboard aggregates. Each reuses only tables that already
+existed (`tenants`, `users`, `leads` and friends) — no schema changes.
+
+### GET / PATCH /api/tenant
+_Admin, Employee (read) · Admin only (write)._ The caller's own tenant only — never another one.
+
+```json
+{ "tenant": { "id": 1, "name": "Acme Leads", "slug": "acme-leads", "status": "active", "employeeLimit": 3, "logoUrl": null, "brandPrimaryColor": "#4f46e5" } }
+```
+`PATCH` body: any of `name`, `logoUrl`, `brandPrimaryColor` (`#RRGGBB`). Logo is a hosted image URL
+— there is no file upload in Phase 1.
+
+### GET /api/users, POST /api/users/invite, PATCH /api/users/:id/status
+_Admin only._ Team management **and** the source of the assignment dropdown on the leads UI.
+
+`POST /api/users/invite` body: `{ "email": "...", "name": "...", "role": "tenant_admin" | "tenant_employee" }`.
+Creates a `status: "invited"` user — no password, no email sent (that's a documented open question,
+not this endpoint's job). Enforces the tenant's `employeeLimit` **only** against `tenant_employee`
+role invites (invited + active count as used seats) — additional Admin accounts don't count against
+it. Returns `409 EMPLOYEE_LIMIT_REACHED` when full.
+
+`PATCH /api/users/:id/status` body: `{ "status": "active" | "deactivated" }` — the deactivate/
+reactivate toggle.
+
+### GET /api/dashboard/summary
+_Admin, Employee._ Shape depends on the caller's role — Admin gets the tenant-wide view (§E), Employee gets only their own numbers.
+
+```json
+// Admin
+{ "scope": "tenant", "totals": { "total": 42, "unassigned": 5, "duplicates": 2 },
+  "sourceBreakdown": [{ "sourceId": 1, "name": "Manual", "count": 30 }],
+  "monthlyVolume": [{ "month": "2026-08", "count": 12 }],
+  "statusBreakdown": [{ "statusId": 1, "name": "New", "isFinal": false, "count": 10 }] }
+
+// Employee
+{ "scope": "employee", "totals": { "assigned": 6, "callsThisMonth": 14 },
+  "statusBreakdown": [ /* same shape, scoped to their own leads */ ] }
+```
+
+### Super Admin — GET /api/super-admin/overview, /tenants, /tenants/:id, PATCH .../employee-limit, .../status
+_Super Admin only — the one namespace where `tenantId` is deliberately `null` and routes operate
+across every tenant._
+
+- `GET /overview` — `{ totalTenants, totalUsers, totalLeads, tenantsByStatus: { active: 3, ... } }`.
+- `GET /tenants` — every tenant, platform-wide.
+- `GET /tenants/:id` — one tenant plus `employeeSeatsUsed` and its `users` list.
+- `PATCH /tenants/:id/employee-limit` — body `{ "employeeLimit": 10 }`.
+- `PATCH /tenants/:id/status` — body `{ "status": "pending_payment" | "active" | "suspended" | "canceled" }`.
+  This **is** the "suspend/cancel subscription" capability from §B — there's no `subscriptions`
+  table or Razorpay integration yet, so `tenants.status` (which already gates workspace access) is
+  the only thing to suspend/cancel against right now.
+
 ## Everything else
 
 Any other path currently returns `404`:
@@ -198,4 +262,4 @@ Any other path currently returns `404`:
 { "error": "Not found: GET /whatever" }
 ```
 
-No Meta, Meta CAPI, Razorpay, dashboard, or website-enquiry-form routes exist yet.
+No Meta, Meta CAPI, Razorpay, or website-enquiry-form routes exist yet.

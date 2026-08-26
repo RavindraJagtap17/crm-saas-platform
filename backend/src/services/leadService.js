@@ -127,6 +127,7 @@ async function listLeads(tenantId, actor, query = {}) {
   // rather than silently letting them probe another employee's id.
   if (actor.role === "tenant_admin" && query.assignedTo) filters.assignedTo = Number(query.assignedTo);
   if (query.isDuplicate !== undefined) filters.isDuplicate = query.isDuplicate === "true";
+  if (query.q) filters.q = String(query.q).trim().slice(0, 255);
 
   const scope = scopeFor(actor);
   const [rows, total] = await Promise.all([

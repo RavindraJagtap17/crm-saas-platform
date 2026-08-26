@@ -9,19 +9,19 @@ step at a time.
 
 ## Status
 
-**Steps 1–4 complete: scaffold, database schema, authentication/tenant-scoping, and the lead engine.**
+**Steps 1–5 complete: scaffold, database schema, authentication, the lead engine, and the frontend.**
 
 - Step 1 — Express scaffold, folder structure, `/health`.
 - Step 2 — Core MySQL schema via versioned migrations (tenants, roles, users, leads, and related tables); roles seeded.
 - Step 3 — Google Sign-In, JWT sessions with rotating/revocable refresh tokens, tenant-scope and role-based authorization middleware, self-service first Tenant Admin signup.
 - Step 4 — Lead CRUD, manual entry, status pipeline, sources, products, dynamic custom fields, duplicate detection/flagging, manual assignment, call activities, and status history — all tenant-scoped and role-gated.
+- Step 5 — Role-specific frontend (Super Admin, Tenant Admin, Employee) in plain HTML/CSS/JS, a shared design system, white-label branding, dashboards, and full lead-management UI. A few small backend additions (tenant branding, employee invitation, dashboard aggregates, Super Admin tenant management) were built alongside it — see `docs/API.md`.
 
-Still not built: employee-limit-aware invitation management, dashboard/analytics, the public website
-enquiry form, Meta Lead Ads/CAPI, Razorpay billing. See `docs/API.md` for exactly what exists today.
+Still not built: the public website enquiry form, Meta Lead Ads/CAPI, Razorpay billing.
 
 ## Tech stack
 
-- Frontend: HTML5, CSS3, vanilla JavaScript (no framework)
+- Frontend: HTML5, CSS3, vanilla JavaScript (no framework, no build step)
 - Backend: Node.js, Express.js
 - Database: MySQL
 - Auth: Google Sign-In only — no passwords anywhere in this system
@@ -32,15 +32,44 @@ enquiry form, Meta Lead Ads/CAPI, Razorpay billing. See `docs/API.md` for exactl
 ```
 backend/    Express API (src/config, routes, controllers, services, models,
             middlewares, validators, integrations, jobs, utils)
-frontend/   Static site (public/ — one folder per app area; src/ — shared css & js)
+frontend/   Static site — see "Frontend structure" below
 docs/       Deployment, environment, and API reference docs
 ```
+
+### Frontend structure
+
+```
+frontend/
+├── config.js               Runtime config: API_BASE_URL, GOOGLE_CLIENT_ID (edited per environment)
+├── serve.json               Local-dev-only server config (see note below)
+├── public/                  One folder per role area — every page is a plain .html file
+│   ├── auth/                 Sign in, create-agency signup
+│   ├── super-admin/           Platform overview, tenant detail
+│   ├── admin/                  Tenant Admin: dashboard, leads, statuses, sources, products,
+│   │                            custom fields, employees, branding, billing
+│   ├── employee/                Employee: dashboard, my leads, lead detail
+│   └── embed/                    Reserved for the website enquiry widget (not built yet)
+└── src/
+    ├── css/                  tokens.css (design tokens) → base.css → components.css → layout.css
+    └── js/
+        ├── api/               client.js (centralized fetch, auth, refresh-on-401), resources.js
+        ├── components/         toast, modal, shell (nav), dataTable, chart, leadForm, ui helpers
+        ├── pages/               one controller module per .html page
+        ├── session.js           in-memory access token + role-based routing guard
+        └── branding.js           applies a tenant's logo/name/color at runtime
+```
+
+No bundler, no framework — every page is `<script type="module">` importing plain ES modules.
+The access token is kept in memory only (never localStorage/sessionStorage); each page
+re-establishes its own session on load via the httpOnly refresh cookie, so the refresh flow is
+exercised on every page view, not just at login.
 
 ## Local development
 
 See [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) for environment variables and
 [`docs/API.md`](docs/API.md) for the current API surface.
 
+**Backend:**
 ```bash
 cd backend
 npm install
@@ -49,17 +78,26 @@ npm run migrate
 npm run seed
 npm run dev
 ```
-
-The app now requires a running MySQL database and real `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET`
-/ `GOOGLE_CLIENT_ID` values to boot (see `docs/ENVIRONMENT.md`) — it fails fast with a clear error
-if any are missing. A real `GOOGLE_CLIENT_ID` (from Google Cloud Console) is only needed for actual
+The app requires a running MySQL database and real `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` /
+`GOOGLE_CLIENT_ID` values to boot (see `docs/ENVIRONMENT.md`) — it fails fast with a clear error if
+any are missing. A real `GOOGLE_CLIENT_ID` (from Google Cloud Console) is only needed for actual
 Google Sign-In to succeed; the server itself starts fine with a placeholder value.
 
-The API starts on `http://localhost:4000` by default. Confirm it's running:
+Confirm it's running: `curl http://localhost:4000/health`
 
+**Frontend** — any static file server pointed at the `frontend/` folder works, e.g.:
 ```bash
-curl http://localhost:4000/health
+npx serve frontend -l 3000
 ```
+Then open `http://localhost:3000/public/auth/index.html`. Set `CORS_ALLOWED_ORIGINS` in the
+backend's `.env` to match whatever origin you serve the frontend from (defaults to
+`http://localhost:3000`).
+
+`frontend/serve.json` disables the `serve` package's default "clean URLs" redirect and adds an
+explicit rewrite instead — the redirect variant drops query strings (e.g. `lead-detail.html?id=5`
+loses `?id=5` on redirect), which broke deep-linking to a specific lead. This is a local-dev-server
+setting only; it doesn't change what the actual `.html` files or their links contain, and a plain
+static host (Plesk included) serving the files as-is needs no equivalent configuration.
 
 ## Documentation
 

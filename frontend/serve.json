@@ -1,0 +1,7 @@
+{
+  "cleanUrls": false,
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/public/:area/:page", "destination": "/public/:area/:page.html" }
+  ]
+}

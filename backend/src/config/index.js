@@ -1,4 +1,8 @@
-require("dotenv").config();
+// Resolved relative to this file, not process.cwd() — dotenv's default
+// path is cwd-relative, which silently finds nothing if the app is ever
+// launched from outside backend/ (e.g. `node backend/src/server.js` from
+// the repo root).
+require("dotenv").config({ path: require("path").join(__dirname, "../../.env") });
 
 /**
  * Central place every environment variable is read from.

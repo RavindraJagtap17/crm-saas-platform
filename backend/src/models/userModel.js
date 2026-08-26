@@ -42,4 +42,53 @@ async function createTenantAdmin(conn, { tenantId, roleId, googleId, email, name
   return result.insertId;
 }
 
-module.exports = { findByEmail, findById, markLogin, createTenantAdmin };
+async function listByTenant(tenantId) {
+  const [rows] = await pool.query(
+    `${SELECT_WITH_ROLE} WHERE u.tenant_id = ? ORDER BY u.created_at ASC`,
+    [tenantId]
+  );
+  return rows;
+}
+
+// employee_limit counts tenant_employee seats specifically — additional
+// Tenant Admin accounts are administrative, not "employees" against the
+// seat limit (the column and the UI section are both named for employees).
+// Counts invited + active together, since an outstanding invite already
+// occupies a seat (§9 of the Final Specification).
+async function countEmployeeSeatsUsed(tenantId) {
+  const [[row]] = await pool.query(
+    `SELECT COUNT(*) AS used FROM users u
+     JOIN roles r ON r.id = u.role_id
+     WHERE u.tenant_id = ? AND r.name = 'tenant_employee' AND u.status IN ('invited', 'active')`,
+    [tenantId]
+  );
+  return row.used;
+}
+
+async function createInvited(tenantId, { email, name, roleId }) {
+  const [result] = await pool.query(
+    `INSERT INTO users (tenant_id, email, name, role_id, status) VALUES (?, ?, ?, ?, 'invited')`,
+    [tenantId, email, name, roleId]
+  );
+  return findById(result.insertId);
+}
+
+async function setStatus(tenantId, id, status) {
+  const [result] = await pool.query(
+    `UPDATE users SET status = ? WHERE id = ? AND tenant_id = ?`,
+    [status, id, tenantId]
+  );
+  if (result.affectedRows === 0) return null;
+  return findById(id);
+}
+
+module.exports = {
+  findByEmail,
+  findById,
+  markLogin,
+  createTenantAdmin,
+  listByTenant,
+  countEmployeeSeatsUsed,
+  createInvited,
+  setStatus,
+};

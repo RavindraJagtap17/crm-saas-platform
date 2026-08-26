@@ -12,6 +12,11 @@ function errorHandler(err, req, res, next) {
   const status = err.status || 500;
   res.status(status).json({
     error: config.isProduction ? "Internal server error" : err.message,
+    // Machine-readable — lets the frontend branch on a specific condition
+    // (e.g. EMPLOYEE_LIMIT_REACHED) without parsing the human message.
+    // Never set for an unexpected 500, only for errors the app raised on
+    // purpose via httpError(..., code).
+    ...(err.code && status < 500 ? { code: err.code } : {}),
   });
 }
 

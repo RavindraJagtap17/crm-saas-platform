@@ -1,4 +1,10 @@
+const pool = require("../config/db");
 const { slugify } = require("../utils/slugify");
+
+const PUBLIC_COLUMNS = `
+  id, name, slug, status, employee_limit, logo_url, brand_primary_color,
+  theme_settings, subdomain, custom_domain, created_at, updated_at
+`;
 
 // Runs inside the caller's transaction connection throughout — tenant
 // creation and slug uniqueness must be checked against the same
@@ -32,4 +38,64 @@ async function createTenant(conn, { name, slug }) {
   return result.insertId;
 }
 
-module.exports = { generateUniqueSlug, createTenant };
+async function findById(id) {
+  const [rows] = await pool.query(`SELECT ${PUBLIC_COLUMNS} FROM tenants WHERE id = ? LIMIT 1`, [id]);
+  return rows[0] || null;
+}
+
+async function updateBranding(id, { name, logoUrl, brandPrimaryColor }) {
+  await pool.query(
+    `UPDATE tenants SET
+       name = COALESCE(?, name),
+       logo_url = COALESCE(?, logo_url),
+       brand_primary_color = COALESCE(?, brand_primary_color)
+     WHERE id = ?`,
+    [name ?? null, logoUrl ?? null, brandPrimaryColor ?? null, id]
+  );
+  return findById(id);
+}
+
+// ---- Super Admin surface: platform-wide, never tenant-scoped ----
+
+async function listAll() {
+  const [rows] = await pool.query(
+    `SELECT ${PUBLIC_COLUMNS} FROM tenants ORDER BY created_at DESC`
+  );
+  return rows;
+}
+
+async function updateEmployeeLimit(id, employeeLimit) {
+  const [result] = await pool.query(`UPDATE tenants SET employee_limit = ? WHERE id = ?`, [employeeLimit, id]);
+  if (result.affectedRows === 0) return null;
+  return findById(id);
+}
+
+async function updateStatus(id, status) {
+  const [result] = await pool.query(`UPDATE tenants SET status = ? WHERE id = ?`, [status, id]);
+  if (result.affectedRows === 0) return null;
+  return findById(id);
+}
+
+async function platformCounts() {
+  const [[{ totalTenants }]] = await pool.query(`SELECT COUNT(*) AS totalTenants FROM tenants`);
+  const [byStatusRows] = await pool.query(`SELECT status, COUNT(*) AS count FROM tenants GROUP BY status`);
+  const [[{ totalUsers }]] = await pool.query(`SELECT COUNT(*) AS totalUsers FROM users WHERE tenant_id IS NOT NULL`);
+  const [[{ totalLeads }]] = await pool.query(`SELECT COUNT(*) AS totalLeads FROM leads`);
+  return {
+    totalTenants,
+    totalUsers,
+    totalLeads,
+    tenantsByStatus: Object.fromEntries(byStatusRows.map((r) => [r.status, r.count])),
+  };
+}
+
+module.exports = {
+  generateUniqueSlug,
+  createTenant,
+  findById,
+  updateBranding,
+  listAll,
+  updateEmployeeLimit,
+  updateStatus,
+  platformCounts,
+};

@@ -1,0 +1,141 @@
+/**
+ * Design tokens — the single source of truth every other stylesheet reads
+ * from. Tenant branding overrides --brand-* at runtime (see branding.js);
+ * Super Admin pages set [data-app-mode="platform"] on <html> for a
+ * distinct, non-tenant-brandable identity (§B/§G of the spec).
+ */
+:root {
+  /* ---- Neutral scale (cool gray, slight blue undertone) ---- */
+  --gray-0: #ffffff;
+  --gray-50: #f7f8fb;
+  --gray-100: #eef0f5;
+  --gray-150: #e4e7ee;
+  --gray-200: #d9dce5;
+  --gray-300: #c1c6d3;
+  --gray-400: #9aa1b3;
+  --gray-500: #717996;
+  --gray-600: #545c75;
+  --gray-700: #3a4055;
+  --gray-800: #262b3d;
+  --gray-900: #14161f;
+
+  /* ---- Brand accent — tenant-overridable ---- */
+  --brand-50: #eef0ff;
+  --brand-100: #dfe2ff;
+  --brand-400: #7c74f0;
+  --brand-500: #4f46e5;
+  --brand-600: #4338ca;
+  --brand-700: #372da3;
+  --brand-contrast: #ffffff;
+
+  /* ---- Semantic colors ---- */
+  --color-success: #16a34a;
+  --color-success-bg: #e9f8ee;
+  --color-success-border: #bfe8cd;
+  --color-warning: #b45309;
+  --color-warning-bg: #fef3e0;
+  --color-warning-border: #f6ddaa;
+  --color-danger: #dc2626;
+  --color-danger-bg: #fdecec;
+  --color-danger-border: #f7c6c6;
+  --color-info: #2563eb;
+  --color-info-bg: #eaf1fe;
+  --color-info-border: #bfd7fb;
+
+  /* ---- Surfaces ---- */
+  --bg-app: var(--gray-50);
+  --bg-surface: var(--gray-0);
+  --bg-surface-2: var(--gray-100);
+  --bg-surface-hover: var(--gray-100);
+  --border-default: var(--gray-150);
+  --border-strong: var(--gray-300);
+  --text-primary: var(--gray-900);
+  --text-secondary: var(--gray-600);
+  --text-tertiary: var(--gray-400);
+  --text-on-brand: var(--brand-contrast);
+
+  /* ---- Typography ---- */
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.125rem;
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+  --weight-regular: 400;
+  --weight-medium: 550;
+  --weight-semibold: 650;
+  --weight-bold: 750;
+
+  /* ---- Spacing scale ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ---- Radius ---- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 999px;
+
+  /* ---- Shadow (subtle, not decorative) ---- */
+  --shadow-sm: 0 1px 2px rgba(20, 22, 31, 0.06), 0 1px 1px rgba(20, 22, 31, 0.03);
+  --shadow-md: 0 6px 16px rgba(20, 22, 31, 0.08), 0 2px 4px rgba(20, 22, 31, 0.04);
+  --shadow-lg: 0 16px 40px rgba(20, 22, 31, 0.14), 0 4px 10px rgba(20, 22, 31, 0.06);
+  --shadow-focus: 0 0 0 3px var(--brand-100);
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-fast: 120ms var(--ease-out);
+  --transition-base: 180ms var(--ease-out);
+  --transition-slow: 280ms var(--ease-out);
+
+  /* ---- Layout ---- */
+  --sidebar-width: 250px;
+  --topbar-height: 64px;
+  --content-max-width: 1360px;
+  --z-nav: 100;
+  --z-overlay: 500;
+  --z-toast: 900;
+}
+
+/* Platform (Super Admin) identity — dark, distinct, never tenant-branded. */
+html[data-app-mode="platform"] {
+  --brand-500: #f59e0b;
+  --brand-600: #d97706;
+  --brand-700: #b45309;
+  --brand-50: #2a2210;
+  --brand-100: #3a2f14;
+  --brand-contrast: #17130a;
+
+  --bg-app: #0d1017;
+  --bg-surface: #151922;
+  --bg-surface-2: #1c212c;
+  --bg-surface-hover: #232936;
+  --border-default: #262d3a;
+  --border-strong: #333c4d;
+  --text-primary: #f2f3f7;
+  --text-secondary: #a4abbd;
+  --text-tertiary: #6f7890;
+  --text-on-brand: #17130a;
+
+  --color-success-bg: #10241a;
+  --color-warning-bg: #2a2211;
+  --color-danger-bg: #2a1414;
+  --color-info-bg: #101d2e;
+}
