@@ -9,7 +9,7 @@ step at a time.
 
 ## Status
 
-**Steps 1–6 complete: scaffold, database schema, authentication, the lead engine, the frontend, and the website enquiry form.**
+**Steps 1–7 complete: scaffold, database schema, authentication, the lead engine, the frontend, the website enquiry form, and Meta Lead Ads integration.**
 
 - Step 1 — Express scaffold, folder structure, `/health`.
 - Step 2 — Core MySQL schema via versioned migrations (tenants, roles, users, leads, and related tables); roles seeded.
@@ -17,8 +17,9 @@ step at a time.
 - Step 4 — Lead CRUD, manual entry, status pipeline, sources, products, dynamic custom fields, duplicate detection/flagging, manual assignment, call activities, and status history — all tenant-scoped and role-gated.
 - Step 5 — Role-specific frontend (Super Admin, Tenant Admin, Employee) in plain HTML/CSS/JS, a shared design system, white-label branding, dashboards, and full lead-management UI. A few small backend additions (tenant branding, employee invitation, dashboard aggregates, Super Admin tenant management) were built alongside it — see `docs/API.md`.
 - Step 6 — Universal website enquiry form: an embeddable script widget (Shadow DOM–isolated) and an iframe fallback, both backed by one public submission API that reuses the Step 4 lead engine unchanged — same duplicate detection, same custom-field validation, same tenant scoping. Per-tenant domain allowlisting, honeypot, and IP rate limiting. Tenant Admins manage forms from a new **Website Forms** page.
+- Step 7 — Meta Lead Ads integration: tenant-scoped Meta OAuth connection (one Facebook Page per tenant, enforced unambiguous by a database `UNIQUE` constraint), a shared inbound webhook that verifies Meta's signature and resolves the owning tenant strictly by `page_id`, per-tenant/per-form field mapping (core fields onto the lead, everything else into `leads.custom_fields`, unmapped fields dropped), and lead creation that reuses the Step 4 `leadService.createLead()` unchanged — same duplicate detection, same tenant scoping, same "starts unassigned" rule. Meta access tokens are encrypted at rest (AES-256-GCM) and never leave the server. Idempotent on Meta's own lead ID, independent of phone-based duplicate flagging. Tenant Admins manage the connection and field mappings from a new **Meta Lead Ads** page.
 
-Still not built: Meta Lead Ads/CAPI, Razorpay billing.
+Still not built: Meta Conversions API (CAPI), Razorpay billing.
 
 ## Tech stack
 
@@ -47,7 +48,7 @@ frontend/
 │   ├── auth/                 Sign in, create-agency signup
 │   ├── super-admin/           Platform overview, tenant detail
 │   ├── admin/                  Tenant Admin: dashboard, leads, statuses, sources, products,
-│   │                            custom fields, employees, branding, billing
+│   │                            custom fields, web forms, Meta Lead Ads, employees, branding, billing
 │   ├── employee/                Employee: dashboard, my leads, lead detail
 │   └── embed/                    crm-lead-widget.js (script embed) + lead-form.html (iframe fallback)
 └── src/

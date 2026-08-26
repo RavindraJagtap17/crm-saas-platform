@@ -22,6 +22,10 @@ const REQUIRED = [
   "JWT_ACCESS_SECRET",
   "JWT_REFRESH_SECRET",
   "GOOGLE_CLIENT_ID",
+  "ENCRYPTION_KEY",
+  "META_APP_ID",
+  "META_APP_SECRET",
+  "META_WEBHOOK_VERIFY_TOKEN",
 ];
 
 function readList(name, fallback = []) {
@@ -72,6 +76,21 @@ const config = {
 
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID,
+  },
+
+  // 64-char hex string (32 bytes) — see src/utils/encryption.js. Used to
+  // encrypt Meta access tokens at rest.
+  encryptionKey: process.env.ENCRYPTION_KEY,
+
+  meta: {
+    appId: process.env.META_APP_ID,
+    appSecret: process.env.META_APP_SECRET,
+    webhookVerifyToken: process.env.META_WEBHOOK_VERIFY_TOKEN,
+    graphApiVersion: process.env.META_GRAPH_API_VERSION || "v19.0",
+    // Where Meta redirects the browser back to after the user
+    // authorizes — defaults to this API's own origin so it works out of
+    // the box in any environment without a separate var to keep in sync.
+    redirectUri: process.env.META_REDIRECT_URI || `${process.env.APP_URL || "http://localhost:4000"}/api/meta/oauth/callback`,
   },
 };
 

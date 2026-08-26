@@ -346,6 +346,141 @@ filled in — is generated on the tenant's **Website Forms** admin page.
 ></iframe>
 ```
 
+## Meta Lead Ads (Step 7)
+
+A tenant-scoped Meta connection (**not** one shared Meta account for every tenant) plus a single
+shared inbound webhook. Only "see connected forms and configure field mapping" is in scope here —
+this is not a Meta campaign/ad-management interface, and there is no Meta CAPI, WhatsApp, or
+Google Ads integration anywhere in this codebase yet.
+
+### Connection — Tenant Admin only
+
+| Route | Notes |
+|---|---|
+| `GET /api/meta/connect` | Returns `{ "authorizationUrl": "https://www.facebook.com/v19.0/dialog/oauth?..." }` for the frontend to navigate the browser to. Never redirects itself — the caller's Bearer token stays in the `Authorization` header for this one call rather than being put in a URL. |
+| `GET /api/meta/oauth/callback` | **Public** — this is where Meta redirects the browser after the tenant admin authorizes. Not callable meaningfully on its own; see OAuth flow below. |
+| `GET /api/meta/connection` | `{ "connected": true, "pageId": "...", "pageName": "...", "adAccountId": "...", "tokenExpiresAt": "2026-10-20T00:00:00.000Z", "isExpired": false, "connectedAt": "..." }`, or `{ "connected": false }`. **Never** includes the access token, encrypted or otherwise. |
+| `DELETE /api/meta/connection` | Removes the tenant's connection. `204`. New leads stop being imported; existing leads and field mappings are untouched. |
+| `GET /api/meta/forms` | `{ "forms": [{ "id": "...", "name": "...", "status": "ACTIVE" }] }` — the connected Page's Lead Ads forms, fetched live from Meta. `400 META_NOT_CONNECTED` / `META_TOKEN_EXPIRED` if there's no live connection. |
+
+**OAuth flow**: `beginConnect` signs a short-lived (10 min) JWT `state` param — `{ tenantId,
+adminUserId, purpose: "meta_oauth" }`, using the same `JWT_ACCESS_SECRET` already used for access
+tokens rather than standing up separate server-side session storage — and builds the standard Meta
+OAuth dialog URL with it (`scope=pages_show_list,leads_retrieval,pages_manage_metadata,
+pages_read_engagement`). When Meta redirects back to `oauthCallback`, the `state` is verified,
+the code is exchanged for a short-lived then long-lived user token, the account's Pages are
+listed, and **the first Page returned is connected automatically** — this is a deliberate Phase 1
+simplification (see Assumptions in the Step 7 report), not a page-picker UI, since the spec calls
+for only what's necessary for lead ingestion. The Page's own access token is what actually gets
+encrypted and stored — leads are always fetched with a Page token, never the user token. Ad
+account access is fetched best-effort and never blocks the connection if it fails. The browser is
+then redirected to `{FRONTEND_URL}/public/admin/meta-integration.html?connected=true` (or
+`?error=...`), since a server-to-browser redirect is the only channel this callback has back to
+the frontend.
+
+**Reconnecting a Page already connected to a different tenant** fails with `409
+META_PAGE_ALREADY_CONNECTED` — enforced by a database `UNIQUE` constraint on `page_id`
+(`meta_integration_settings`), which is also exactly what makes webhook tenant resolution
+unambiguous by construction (see below).
+
+**Token expiry**: `isExpired` is computed from `token_expires_at` (`null` means Meta reported no
+fixed expiry — treated as not expired). There is **no automatic token refresh** — Meta's Page
+token model (derived from a long-lived user token, itself only refreshable by the user
+re-authorizing) doesn't offer a standard refresh-token grant to build one on top of, and the spec
+explicitly says not to build this unless the OAuth flow requires/supports it. An expired
+connection is surfaced via `isExpired` for the admin UI to show a "reconnect" warning; ingestion
+for that tenant fails safely (see webhook behavior below) until the tenant admin reconnects.
+
+### Field mapping — Tenant Admin only
+
+| Route | Notes |
+|---|---|
+| `GET /api/meta/mappings?formId=...` | Lists the tenant's mappings, optionally filtered to one Meta form. |
+| `POST /api/meta/mappings` | `{ "metaFormId": "...", "metaFieldKey": "full_name", "crmFieldKey": "name" }`. `409` if this exact form+field is already mapped. |
+| `PATCH /api/meta/mappings/:id` | `{ "crmFieldKey": "..." }` — only the target can change; `metaFormId`/`metaFieldKey` are fixed after creation. |
+| `DELETE /api/meta/mappings/:id` | |
+
+`crmFieldKey` must be one of the three fixed core keys (`name`, `phone`, `email`) or an **active**
+custom field definition for that tenant — `400 INVALID_CRM_FIELD_KEY` otherwise. This is checked
+at mapping-save time, not hoped for at ingestion time, so a tenant admin gets immediate feedback
+rather than a silently-dropped field later. All four routes are strictly `tenant_id`-scoped, both
+in the `WHERE` clause of every query and via the `(tenant_id, id)` lookup on update/delete — a
+mapping id belonging to another tenant returns a plain `404`, never a `403` that would confirm the
+id exists.
+
+### Webhook — shared across every tenant, no authentication
+
+| Route | Notes |
+|---|---|
+| `GET /api/meta/webhook` | Meta's one-time subscription verification handshake (done once, in the App Dashboard). Echoes `hub.challenge` as `text/plain` if `hub.verify_token` matches `META_WEBHOOK_VERIFY_TOKEN`; `403` otherwise. |
+| `POST /api/meta/webhook` | The real inbound event delivery. |
+
+**Signature verification**: every `POST` must carry a valid `X-Hub-Signature-256: sha256=<hex>`
+header — an HMAC-SHA256 of the *exact raw request bytes* using `META_APP_SECRET`, compared with
+`crypto.timingSafeEqual`. This route captures the raw body itself (`express.json({ verify })`) and
+is excluded from the app's global body parser and CORS middleware (`backend/src/app.js`) so that
+raw-byte capture actually happens before anything else touches the body — parsing it first (even
+just to validate JSON shape) would make the signature unverifiable, since whitespace/key-order
+differences change the hash. A missing or incorrect signature is rejected with `403` and logged to
+`webhook_logs` (`signature_valid: false`) — never processed further.
+
+**Tenant resolution (§D)** — the *only* place a webhook event's tenant is ever determined:
+`value.page_id` (falling back to `entry.id`) is looked up against `meta_integration_settings.page_id`.
+Nothing else — not a `tenant_id` in the payload, not a query param, not a header — is ever trusted
+for this. An unresolvable `page_id` returns outcome `unknown_page`, is logged with `tenant_id:
+NULL` (never a default/global tenant), and creates no lead.
+
+**Processing, per `leadgen` change in the payload** (a single `POST` can carry multiple
+`entry[]`/`changes[]` items, potentially spanning several tenants' pages — each is resolved and
+processed independently, and one bad or unresolvable entry never fails the rest of the batch):
+
+1. Resolve tenant by `page_id` → `unknown_page` if none.
+2. **Idempotency pre-check**: if a lead with this exact `meta_lead_id` already exists, outcome is
+   `already_processed` — no Graph API call, no second lead. Backstopped by a genuine database
+   `UNIQUE` constraint (`leads.meta_lead_id`, from Step 2) that also catches the race window
+   between this check and the insert (a concurrent duplicate delivery hits `ER_DUP_ENTRY` and is
+   caught as `already_processed` too). **This is deliberately separate from phone-based duplicate
+   detection** (below) — idempotency exists so retried/duplicate *webhook deliveries* of the same
+   Meta lead never create a second CRM record at all; phone-based dedup is a *business* signal that
+   still creates the (second) lead, just flagged.
+3. If the tenant's token is expired, outcome is `token_expired` — the Graph API is never called.
+4. Fetch the full lead (`id, form_id, field_data, created_time, ad_id, page_id`) from Meta's Graph
+   API using **that tenant's own decrypted Page access token** — never another tenant's, never a
+   shared/global credential.
+5. Apply this tenant+form's field mappings to `field_data`: mapped core fields (`name`/`phone`/
+   `email`) go straight onto the lead; mapped custom fields go into `leads.custom_fields`; **any
+   unmapped Meta field is dropped, not stored** — logged for visibility, never silently retained
+   anywhere on the lead.
+6. Create the lead through **the same `leadService.createLead()`** every other lead-creation path
+   in this app uses (manual entry, the Step 6 website form, and now this) — same phone
+   normalization, same tenant-scoped phone-based duplicate detection, same custom-field validation,
+   same "starts unassigned, no status" rule. Source is the tenant's own auto-provisioned "Meta Ads"
+   lead source (created lazily on first use, same pattern as "Manual" and the website form's
+   sources). `meta_lead_id` is set so future retries hit the idempotency check above.
+
+The endpoint always responds `200` once the signature itself is valid, regardless of individual
+event outcomes (`created`, `already_processed`, `unknown_page`, `token_expired`,
+`graph_api_error`, `malformed_event`) — every one of those is "nothing more to do", not a reason
+for Meta to retry delivery. Every event (valid or rejected) is logged to `webhook_logs` for
+debugging, including its outcome and resolved `tenant_id` where applicable — payloads are logged,
+access tokens never are.
+
+### Local testing without a real Meta App
+
+Signature verification, tenant resolution, idempotency, field mapping, and lead creation were all
+verified for real against the local database and a running instance of this app — only the true
+external boundary (`graph.facebook.com`) was mocked, at the `graphClient` module level, since this
+environment has no real Meta App/credentials (same situation as `GOOGLE_CLIENT_ID` in Step 3). A
+valid webhook signature can be generated locally without any Meta account at all, since it only
+needs your own `META_APP_SECRET`:
+```bash
+node -e "console.log('sha256=' + require('crypto').createHmac('sha256', process.env.META_APP_SECRET).update(JSON.stringify({entry:[]})).digest('hex'))"
+```
+The GET verification handshake can be exercised directly too:
+```bash
+curl "http://localhost:4000/api/meta/webhook?hub.mode=subscribe&hub.verify_token=YOUR_META_WEBHOOK_VERIFY_TOKEN&hub.challenge=test123"
+```
+
 ## Everything else
 
 Any other path currently returns `404`:
@@ -354,4 +489,4 @@ Any other path currently returns `404`:
 { "error": "Not found: GET /whatever" }
 ```
 
-No Meta, Meta CAPI, Razorpay, WhatsApp, or other later-phase routes exist yet.
+No Meta CAPI, Razorpay, WhatsApp, YaGo, or other later-phase routes exist yet.

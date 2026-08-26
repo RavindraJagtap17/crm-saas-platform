@@ -12,6 +12,7 @@ const dashboardRoutes = require("./dashboard.routes");
 const superAdminRoutes = require("./superAdmin.routes");
 const webFormRoutes = require("./webForm.routes");
 const publicFormRoutes = require("./publicForm.routes");
+const metaRoutes = require("./meta.routes");
 
 const router = express.Router();
 
@@ -28,6 +29,7 @@ router.use("/api/dashboard", dashboardRoutes);
 router.use("/api/super-admin", superAdminRoutes);
 router.use("/api/web-forms", webFormRoutes);
 router.use("/api/public/lead-form", publicFormRoutes);
+router.use("/api/meta", metaRoutes);
 
 // Future route namespaces (added in later steps, per the approved spec §22):
 // router.use("/api/billing", billingRoutes);

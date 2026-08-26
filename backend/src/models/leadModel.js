@@ -43,8 +43,8 @@ async function insert(conn, tenantId, lead) {
   const [result] = await runner.query(
     `INSERT INTO leads
        (tenant_id, name, phone, email, source_id, product_id, status_id, assigned_to,
-        custom_fields, is_duplicate, duplicate_of_lead_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        custom_fields, meta_lead_id, is_duplicate, duplicate_of_lead_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       tenantId,
       lead.name ?? null,
@@ -55,12 +55,22 @@ async function insert(conn, tenantId, lead) {
       lead.statusId ?? null,
       lead.assignedTo ?? null,
       lead.customFields ? JSON.stringify(lead.customFields) : null,
+      lead.metaLeadId ?? null,
       !!lead.isDuplicate,
       lead.duplicateOfLeadId ?? null,
     ]
   );
   const [rows] = await runner.query(`SELECT ${BASE_COLUMNS} FROM leads WHERE id = ?`, [result.insertId]);
   return rows[0];
+}
+
+// Step 7 idempotency (§K): meta_lead_id has a global UNIQUE index
+// (migration 007) — this is the pre-check; the constraint itself is the
+// backstop against a race between two near-simultaneous webhook
+// deliveries for the same Meta lead (see metaLeadService.js).
+async function findByMetaLeadId(metaLeadId) {
+  const [rows] = await pool.query(`SELECT ${BASE_COLUMNS} FROM leads WHERE meta_lead_id = ? LIMIT 1`, [metaLeadId]);
+  return rows[0] || null;
 }
 
 async function count(tenantId, { restrictToUserId, filters = {} } = {}) {
@@ -239,6 +249,7 @@ async function employeeTotals(tenantId, userId) {
 
 module.exports = {
   findById,
+  findByMetaLeadId,
   findEarliestByPhoneForUpdate,
   insert,
   count,

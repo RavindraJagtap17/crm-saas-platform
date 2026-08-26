@@ -26,8 +26,11 @@ app.use(helmet());
 // tenant's website and configures its own separate, non-credentialed
 // CORS policy in publicForm.routes.js — so it's explicitly excluded here
 // rather than fighting two CORS middlewares over the same response.
+// /api/meta/webhook (Step 7) is excluded too: Meta's servers call it
+// directly, with no browser/Origin involved, so our own CORS policy is
+// simply irrelevant to it.
 app.use((req, res, next) => {
-  if (req.path.startsWith("/api/public/")) return next();
+  if (req.path.startsWith("/api/public/") || req.path === "/api/meta/webhook") return next();
   return cors({
     origin: config.corsAllowedOrigins.length > 0 ? config.corsAllowedOrigins : false,
     // Refresh tokens travel as an httpOnly cookie, which requires the
@@ -42,9 +45,13 @@ app.use((req, res, next) => {
 // Same exclusion as the CORS middleware above, and for the same reason:
 // the public router applies its own smaller body-size limit
 // (publicForm.routes.js), which would never take effect if this general
-// 100kb parser already consumed the request body first.
+// parser already consumed the request body first. /api/meta/webhook is
+// excluded for a different but related reason: meta.routes.js applies
+// its own express.json({verify}) to capture the exact raw bytes Meta
+// sent, which Meta signature verification requires — that capture would
+// never run if this global parser consumed the body first.
 app.use((req, res, next) => {
-  if (req.path.startsWith("/api/public/")) return next();
+  if (req.path.startsWith("/api/public/") || req.path === "/api/meta/webhook") return next();
   return express.json()(req, res, next);
 });
 app.use(cookieParser());

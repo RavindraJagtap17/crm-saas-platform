@@ -101,6 +101,13 @@ async function createLead(tenantId, actor, body) {
       statusId: null,
       assignedTo: null, // §C / §I: new leads always start unassigned
       customFields,
+      // Only ever set by trusted internal callers (metaLeadService) —
+      // validateCreateLead strips metaLeadId from `clean` because it's a
+      // protected field for any client-facing caller (manual entry,
+      // public website form); read directly off the raw body instead,
+      // which is safe specifically because createLead is never itself
+      // exposed as a raw client-writable endpoint.
+      metaLeadId: typeof body?.metaLeadId === "string" && body.metaLeadId.trim() ? body.metaLeadId.trim() : undefined,
       isDuplicate,
       duplicateOfLeadId,
     });

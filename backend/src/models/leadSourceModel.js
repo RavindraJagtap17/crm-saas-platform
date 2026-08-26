@@ -60,4 +60,16 @@ async function findOrCreateManualSource(tenantId) {
   return create(tenantId, { name: MANUAL_SOURCE_NAME, type: MANUAL_SOURCE_TYPE });
 }
 
-module.exports = { list, findById, findByName, create, update, findOrCreateManualSource };
+// Same pattern for Meta-sourced leads (§H: "Source is represented as
+// Meta Ads") — each tenant gets its own row, created lazily the first
+// time a Meta lead actually arrives for that tenant.
+const META_SOURCE_NAME = "Meta Ads";
+const META_SOURCE_TYPE = "meta";
+
+async function findOrCreateMetaSource(tenantId) {
+  const existing = await findByName(tenantId, META_SOURCE_NAME);
+  if (existing) return existing;
+  return create(tenantId, { name: META_SOURCE_NAME, type: META_SOURCE_TYPE });
+}
+
+module.exports = { list, findById, findByName, create, update, findOrCreateManualSource, findOrCreateMetaSource };

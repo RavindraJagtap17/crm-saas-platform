@@ -21,6 +21,7 @@ const NAV = {
         { key: "products", label: "Products", href: "/public/admin/products.html", icon: "▣" },
         { key: "custom-fields", label: "Custom Fields", href: "/public/admin/custom-fields.html", icon: "✎" },
         { key: "web-forms", label: "Website Forms", href: "/public/admin/web-forms.html", icon: "⌗" },
+        { key: "meta-integration", label: "Meta Lead Ads", href: "/public/admin/meta-integration.html", icon: "◈" },
       ],
     },
     {

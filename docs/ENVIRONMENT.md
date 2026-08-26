@@ -58,13 +58,29 @@ skips the signed-token step entirely. A refresh token is a random 384-bit value;
 only its HMAC (via `JWT_REFRESH_SECRET`) in the `refresh_tokens` table, alongside an expiry and a
 revoked flag. That's what makes rotation-with-reuse-detection and logout-revocation possible.
 
-`ENCRYPTION_KEY` remains reserved — not used until Meta token-at-rest encryption is implemented.
+## Active as of Step 7 — Meta Lead Ads
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENCRYPTION_KEY` | *(required)* | 64-character hex string (32 bytes) used for AES-256-GCM encryption of Meta access tokens at rest. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Not reused for anything else — a leak of this key only exposes Meta tokens, not JWT sessions. |
+| `META_APP_ID` | *(required)* | From developers.facebook.com → your App → Settings → Basic. Public-ish (sent to the browser as part of the OAuth dialog URL) but still required to be a real, configured Meta App for OAuth to work. |
+| `META_APP_SECRET` | *(required)* | From the same App Settings page. Used server-side only: to exchange OAuth codes for tokens, and as the HMAC key verifying `X-Hub-Signature-256` on every inbound webhook — never sent to the browser. |
+| `META_WEBHOOK_VERIFY_TOKEN` | *(required)* | **Not** issued by Meta — an arbitrary string you choose yourself and enter into the App Dashboard's Webhooks config. Meta echoes it back on the one-time GET verification handshake so the subscription setup can be confirmed as legitimate. |
+| `META_GRAPH_API_VERSION` | `v19.0` | Graph API version prefix for every Meta API call. |
+| `META_REDIRECT_URI` | `${APP_URL}/api/meta/oauth/callback` | Where Meta redirects the browser after the user authorizes. Must exactly match a redirect URI registered in the Meta App's OAuth settings. |
+
+Same "no real credentials in this sandboxed environment" situation as `GOOGLE_CLIENT_ID` in Step 3:
+`META_APP_ID`/`META_APP_SECRET` ship as placeholders in `.env`. The server boots and every
+non-Graph-API-dependent code path (webhook signature verification, tenant resolution via
+`page_id`, field mapping, `leadService.createLead` reuse, `meta_lead_id` idempotency, token-at-rest
+encryption, RBAC/tenant isolation) was verified for real against the local database with a mocked
+Graph API response layer — see the Step 7 report for what that covered and how.
 
 ## Reserved for later steps
 
 | Group | Variables | Added when |
 |---|---|---|
-| Meta | `META_APP_ID`, `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN` | Meta Lead Ads / CAPI is implemented |
+| Meta CAPI | `META_CAPI_ACCESS_TOKEN` (or similar — TBD) | Meta Conversions API is implemented |
 | Razorpay | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Billing is implemented |
 
 See Section 26 of the Final Specification for the complete, final list.
