@@ -1,4 +1,5 @@
 const express = require("express");
+const { webhookLimiter } = require("../middlewares/webhookRateLimit");
 const controller = require("../controllers/razorpayWebhook.controller");
 
 const router = express.Router();
@@ -19,6 +20,6 @@ router.use(
 // PUBLIC, shared across every tenant — Razorpay's servers call this
 // directly and cannot present our session tokens. Security comes entirely
 // from signature verification, not our own auth system.
-router.post("/", controller.receiveEvent);
+router.post("/", webhookLimiter, controller.receiveEvent);
 
 module.exports = router;

@@ -2,6 +2,7 @@ const subscriptionModel = require("../models/subscriptionModel");
 const subscriptionPlanModel = require("../models/subscriptionPlanModel");
 const paymentModel = require("../models/paymentModel");
 const tenantModel = require("../models/tenantModel");
+const auditLogModel = require("../models/auditLogModel");
 const subscriptionPlanService = require("./subscriptionPlanService");
 const razorpayClient = require("../integrations/razorpay/razorpayClient");
 const httpError = require("../utils/httpError");
@@ -112,8 +113,14 @@ async function subscribe(tenantId, actorUser, body) {
  * §J/§K: shared by both the Tenant Admin ("own tenant only") and Super
  * Admin ("any tenant") routes — authorization is entirely the route
  * layer's job; this function just needs a tenantId it can trust.
+ *
+ * `actor` (optional, `{ userId }`) is passed ONLY by the Super Admin
+ * override route (superAdmin.controller.js) — its presence is what
+ * distinguishes a Super Admin's cross-tenant override (audited, per the
+ * Final Specification's audit-log requirement) from a Tenant Admin
+ * changing their own plan (not a Super Admin action, not audited here).
  */
-async function changePlan(tenantId, body) {
+async function changePlan(tenantId, body, actor) {
   const { planId, timing } = validatePlanChangeBody(body);
 
   const subscription = await subscriptionModel.findByTenant(tenantId);
@@ -140,6 +147,17 @@ async function changePlan(tenantId, body) {
     scheduleChangeAt: timing,
   });
 
+  if (actor?.userId) {
+    await auditLogModel.create({
+      tenantId,
+      userId: actor.userId,
+      action: "subscription.plan_override",
+      entityType: "subscription",
+      entityId: subscription.id,
+      meta: { fromPlanId: subscription.plan_id, requestedPlanId: plan.id, timing },
+    });
+  }
+
   return {
     requestedPlan: { id: plan.id, name: plan.name },
     timing,
@@ -163,21 +181,41 @@ async function changePlan(tenantId, body) {
  * an unverified client redirect — there is nothing further to "wait and
  * verify" the way a browser checkout callback would require.
  */
-async function suspend(tenantId) {
+// actor (`{ userId }`) is required here, not optional — unlike changePlan,
+// this function has exactly one caller (the Super Admin override route),
+// so every call is by definition the action the Final Specification's
+// audit-log requirement names.
+async function suspend(tenantId, actor) {
   const subscription = await subscriptionModel.findByTenant(tenantId);
   if (!subscription) throw httpError("No subscription found for this tenant.", 404, "NO_SUBSCRIPTION");
 
   await razorpayClient.pauseSubscription(subscription.razorpay_subscription_id);
   const tenant = await tenantModel.updateStatus(tenantId, "suspended");
+  await auditLogModel.create({
+    tenantId,
+    userId: actor.userId,
+    action: "subscription.suspended",
+    entityType: "subscription",
+    entityId: subscription.id,
+    meta: null,
+  });
   return tenant;
 }
 
-async function resume(tenantId) {
+async function resume(tenantId, actor) {
   const subscription = await subscriptionModel.findByTenant(tenantId);
   if (!subscription) throw httpError("No subscription found for this tenant.", 404, "NO_SUBSCRIPTION");
 
   await razorpayClient.resumeSubscription(subscription.razorpay_subscription_id);
   const tenant = await tenantModel.updateStatus(tenantId, "active");
+  await auditLogModel.create({
+    tenantId,
+    userId: actor.userId,
+    action: "subscription.resumed",
+    entityType: "subscription",
+    entityId: subscription.id,
+    meta: null,
+  });
   return tenant;
 }
 
@@ -185,12 +223,20 @@ async function resume(tenantId) {
  * §K: Super Admin only. Same synchronous-confirmation reasoning as
  * suspend() above.
  */
-async function cancel(tenantId) {
+async function cancel(tenantId, actor) {
   const subscription = await subscriptionModel.findByTenant(tenantId);
   if (!subscription) throw httpError("No subscription found for this tenant.", 404, "NO_SUBSCRIPTION");
 
   await razorpayClient.cancelSubscription(subscription.razorpay_subscription_id, { cancelAtCycleEnd: false });
   const tenant = await tenantModel.updateStatus(tenantId, "canceled");
+  await auditLogModel.create({
+    tenantId,
+    userId: actor.userId,
+    action: "subscription.cancelled",
+    entityType: "subscription",
+    entityId: subscription.id,
+    meta: null,
+  });
   return tenant;
 }
 

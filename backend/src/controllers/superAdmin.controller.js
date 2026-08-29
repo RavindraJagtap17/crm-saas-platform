@@ -12,12 +12,12 @@ const getTenant = asyncHandler(async (req, res) => {
 });
 
 const updateEmployeeLimit = asyncHandler(async (req, res) => {
-  const tenant = await superAdminService.updateEmployeeLimit(req.params.id, req.body);
+  const tenant = await superAdminService.updateEmployeeLimit(req.params.id, req.body, req.user.sub);
   res.json({ tenant });
 });
 
 const updateStatus = asyncHandler(async (req, res) => {
-  const tenant = await superAdminService.updateStatus(req.params.id, req.body);
+  const tenant = await superAdminService.updateStatus(req.params.id, req.body, req.user.sub);
   res.json({ tenant });
 });
 
@@ -32,17 +32,17 @@ const listPlans = asyncHandler(async (req, res) => {
 });
 
 const createPlan = asyncHandler(async (req, res) => {
-  const plan = await subscriptionPlanService.create(req.body);
+  const plan = await subscriptionPlanService.create(req.body, req.user.sub);
   res.status(201).json({ plan });
 });
 
 const updatePlan = asyncHandler(async (req, res) => {
-  const plan = await subscriptionPlanService.update(req.params.id, req.body);
+  const plan = await subscriptionPlanService.update(req.params.id, req.body, req.user.sub);
   res.json({ plan });
 });
 
 const setPlanActive = asyncHandler(async (req, res) => {
-  const plan = await subscriptionPlanService.setActive(req.params.id, req.body?.isActive);
+  const plan = await subscriptionPlanService.setActive(req.params.id, req.body?.isActive, req.user.sub);
   res.json({ plan });
 });
 
@@ -57,19 +57,19 @@ const getTenantSubscription = asyncHandler(async (req, res) => {
 });
 
 const changeTenantPlan = asyncHandler(async (req, res) => {
-  res.json(await billingService.changePlan(req.params.id, req.body));
+  res.json(await billingService.changePlan(req.params.id, req.body, { userId: req.user.sub }));
 });
 
 const suspendTenantSubscription = asyncHandler(async (req, res) => {
-  res.json({ tenant: await billingService.suspend(req.params.id) });
+  res.json({ tenant: await billingService.suspend(req.params.id, { userId: req.user.sub }) });
 });
 
 const resumeTenantSubscription = asyncHandler(async (req, res) => {
-  res.json({ tenant: await billingService.resume(req.params.id) });
+  res.json({ tenant: await billingService.resume(req.params.id, { userId: req.user.sub }) });
 });
 
 const cancelTenantSubscription = asyncHandler(async (req, res) => {
-  res.json({ tenant: await billingService.cancel(req.params.id) });
+  res.json({ tenant: await billingService.cancel(req.params.id, { userId: req.user.sub }) });
 });
 
 module.exports = {

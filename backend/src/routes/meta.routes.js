@@ -4,6 +4,7 @@ const tenantScope = require("../middlewares/tenantScope");
 const requireActiveTenant = require("../middlewares/requireActiveTenant");
 const requireRole = require("../middlewares/requireRole");
 const validateIdParam = require("../middlewares/validateIdParam");
+const { webhookLimiter } = require("../middlewares/webhookRateLimit");
 const webhookController = require("../controllers/metaWebhook.controller");
 const controller = require("../controllers/meta.controller");
 
@@ -28,7 +29,7 @@ router.use(
 // verification (POST) and the verify_token handshake (GET), not from
 // our own auth system.
 router.get("/webhook", webhookController.verifySubscription);
-router.post("/webhook", webhookController.receiveEvent);
+router.post("/webhook", webhookLimiter, webhookController.receiveEvent);
 
 // ---- OAuth callback: PUBLIC (Meta redirects the browser here) ----
 // Secured by the signed `state` param instead of a session — see

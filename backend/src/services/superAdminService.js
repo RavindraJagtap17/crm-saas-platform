@@ -1,5 +1,6 @@
 const tenantModel = require("../models/tenantModel");
 const userModel = require("../models/userModel");
+const auditLogModel = require("../models/auditLogModel");
 const httpError = require("../utils/httpError");
 const { validateStatus, validateEmployeeLimit } = require("../validators/tenantValidators");
 
@@ -38,10 +39,20 @@ async function getTenant(id) {
   };
 }
 
-async function updateEmployeeLimit(id, body) {
+async function updateEmployeeLimit(id, body, actorUserId) {
   const employeeLimit = validateEmployeeLimit(body);
+  const existing = await tenantModel.findById(id);
+  if (!existing) throw httpError("Tenant not found.", 404);
   const updated = await tenantModel.updateEmployeeLimit(id, employeeLimit);
   if (!updated) throw httpError("Tenant not found.", 404);
+  await auditLogModel.create({
+    tenantId: id,
+    userId: actorUserId,
+    action: "tenant.employee_limit_changed",
+    entityType: "tenant",
+    entityId: Number(id),
+    meta: { from: existing.employee_limit, to: employeeLimit },
+  });
   return serialize(updated);
 }
 
@@ -50,10 +61,20 @@ async function updateEmployeeLimit(id, body) {
 // actually exists today — tenants.status. There is no subscriptions table
 // or Razorpay integration yet (later step), so there is nothing beyond
 // this to suspend/cancel against right now.
-async function updateStatus(id, body) {
+async function updateStatus(id, body, actorUserId) {
   const status = validateStatus(body);
+  const existing = await tenantModel.findById(id);
+  if (!existing) throw httpError("Tenant not found.", 404);
   const updated = await tenantModel.updateStatus(id, status);
   if (!updated) throw httpError("Tenant not found.", 404);
+  await auditLogModel.create({
+    tenantId: id,
+    userId: actorUserId,
+    action: "tenant.status_changed",
+    entityType: "tenant",
+    entityId: Number(id),
+    meta: { from: existing.status, to: status },
+  });
   return serialize(updated);
 }
 

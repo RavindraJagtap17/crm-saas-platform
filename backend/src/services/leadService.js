@@ -102,13 +102,21 @@ async function createLead(tenantId, actor, body) {
       statusId: null,
       assignedTo: null, // §C / §I: new leads always start unassigned
       customFields,
-      // Only ever set by trusted internal callers (metaLeadService) —
-      // validateCreateLead strips metaLeadId from `clean` because it's a
-      // protected field for any client-facing caller (manual entry,
-      // public website form); read directly off the raw body instead,
-      // which is safe specifically because createLead is never itself
-      // exposed as a raw client-writable endpoint.
-      metaLeadId: typeof body?.metaLeadId === "string" && body.metaLeadId.trim() ? body.metaLeadId.trim() : undefined,
+      // Step 10 security fix: only ever set for the one trusted internal
+      // caller (metaLeadService, which passes actor.role === "meta_integration"
+      // — a synthetic role no authenticated request can ever carry, since
+      // it's never issued by signAccessToken). Gating on `actor.role`
+      // rather than on `body`'s shape is the actual fix — createLead IS
+      // reachable directly from client input (POST /api/leads passes
+      // req.body straight through, see lead.controller.js), so the
+      // previous "never client-writable" premise was false: any
+      // authenticated tenant user could set an arbitrary metaLeadId,
+      // which (via leads.meta_lead_id's platform-wide, non-tenant-scoped
+      // UNIQUE index — required so Step 7's webhook idempotency check
+      // works across tenants) let Tenant A pre-claim Tenant B's Meta
+      // leadgen_id and silently swallow that lead when Meta's webhook
+      // later delivered it — see the Step 10 regression test.
+      metaLeadId: actor?.role === "meta_integration" && typeof body?.metaLeadId === "string" && body.metaLeadId.trim() ? body.metaLeadId.trim() : undefined,
       isDuplicate,
       duplicateOfLeadId,
     });

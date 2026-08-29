@@ -2,13 +2,14 @@ const express = require("express");
 const authenticate = require("../middlewares/authenticate");
 const tenantScope = require("../middlewares/tenantScope");
 const requireRole = require("../middlewares/requireRole");
+const { signInLimiter, refreshLimiter } = require("../middlewares/authRateLimit");
 const controller = require("../controllers/auth.controller");
 
 const router = express.Router();
 
-router.post("/google", controller.googleSignIn);
-router.post("/signup", controller.signupAgency);
-router.post("/refresh", controller.refresh);
+router.post("/google", signInLimiter, controller.googleSignIn);
+router.post("/signup", signInLimiter, controller.signupAgency);
+router.post("/refresh", refreshLimiter, controller.refresh);
 router.post("/logout", controller.logout);
 
 router.get("/me", authenticate, tenantScope, controller.me);

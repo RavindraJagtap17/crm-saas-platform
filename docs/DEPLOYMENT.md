@@ -28,6 +28,21 @@ when deployment actually happens.
 - Frontend and backend are fully separate folders that can be pointed at separate Plesk
   domains/subdomains without any code changes.
 
+## Webhook endpoints — Meta and Razorpay both require public HTTPS reachability
+
+Two inbound webhooks (`POST /api/meta/webhook`, Step 7; `POST /api/razorpay/webhook`, Step 9) only
+function once deployed to a real, publicly reachable HTTPS URL — neither Meta nor Razorpay can
+reach `localhost`. Once the API subdomain is live, both need one-time registration with their
+respective provider:
+
+- **Meta**: App Dashboard → Webhooks → subscribe `https://api.yourdomain.com/api/meta/webhook`,
+  using the same `META_WEBHOOK_VERIFY_TOKEN` configured in this app's environment.
+- **Razorpay**: Dashboard → Settings → Webhooks → add `https://api.yourdomain.com/api/razorpay/webhook`,
+  using the same `RAZORPAY_WEBHOOK_SECRET` configured in this app's environment.
+
+Both are pure server-to-server calls (no browser/CORS involved) — nothing about the deployment
+target above needs to change for them; they just need the domain to actually resolve and serve TLS.
+
 ## Not yet done
 
 Actual provisioning — creating the Plesk Node.js application, the database, DNS, and TLS

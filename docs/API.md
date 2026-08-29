@@ -42,6 +42,11 @@ Refresh tokens travel as an `httpOnly` cookie (`refresh_token`, scoped to path `
 the response body — a client-side script can never read it, which is the point. Callers that need
 the refresh flow to work must send credentials (e.g. `fetch(url, { credentials: "include" })`).
 
+**Rate limiting (Step 10)**: `POST /api/auth/google` and `/api/auth/signup` are limited to 20
+requests per 15 minutes per IP; `POST /api/auth/refresh` to 60 per 15 minutes per IP (higher,
+since every open tab/page load calls it). Over the limit: `429 { "error": "..." }`. Mirrors the
+same `express-rate-limit` pattern the public enquiry form (Step 6) already used.
+
 ### POST /api/auth/google
 
 Normal sign-in for an account that already exists (active or invited).
@@ -55,10 +60,12 @@ Normal sign-in for an account that already exists (active or invited).
 ```json
 {
   "accessToken": "<JWT, ~15 min>",
-  "user": { "id": 1, "email": "...", "name": "...", "avatarUrl": "...", "role": "tenant_admin", "tenantId": 1, "status": "active" }
+  "user": { "id": 1, "email": "...", "name": "...", "avatarUrl": "...", "role": "tenant_admin", "tenantId": 1, "status": "active", "tenantStatus": "active" }
 }
 ```
-Also sets the `refresh_token` cookie.
+Also sets the `refresh_token` cookie. `tenantStatus` (Step 9) is `null` for a `super_admin` (who carries
+no tenant) — a UX-only signal for the frontend; the actual gate is enforced server-side by
+`requireActiveTenant`, not this field.
 
 **Errors**
 - `400` — missing/malformed token
@@ -781,6 +788,38 @@ node -e "console.log(require('crypto').createHmac('sha256', process.env.RAZORPAY
 reach `localhost`) — for genuine end-to-end testing against Razorpay Test Mode, expose the local
 server through a secure tunnel (e.g. ngrok) or a staging deployment, and register that URL plus a
 real webhook secret in the Razorpay Dashboard.
+
+## Security hardening (Step 10)
+
+Final pre-deployment audit across Steps 1–9 — no new business functionality, no schema redesign.
+Two genuine issues were found and fixed:
+
+1. **Cross-tenant lead hijack via `metaLeadId`** (fixed) — `POST /api/leads` silently accepted a
+   client-supplied `metaLeadId`, even though it's listed as a protected field. Because
+   `leads.meta_lead_id` has a platform-wide (not tenant-scoped) `UNIQUE` index — required for Step
+   7's webhook idempotency to work at all — any authenticated tenant user could "pre-claim" another
+   tenant's real Meta `leadgen_id` and silently swallow that lead when Meta's webhook later
+   delivered it for real. Fixed in `leadService.js`'s `createLead`: `metaLeadId` is now only ever
+   accepted from the one trusted internal caller (`actor.role === "meta_integration"`, a role no
+   authenticated request can ever carry), not from request shape.
+2. **No rate limiting on authentication endpoints** (fixed) — `/api/auth/google`, `/api/auth/signup`,
+   and `/api/auth/refresh` had none, unlike the public enquiry form (Step 6). Added (see the
+   Authentication section above).
+
+Also hardened, non-behavioral: `payments.subscription_id` was a single-column FK to
+`subscriptions(id)` rather than the composite `(tenant_id, id)` pattern every other tenant-owned
+cross-reference in this schema uses — migrations 022–023 add the missing `(tenant_id, id)` key on
+`subscriptions` and repoint the FK, so it's now structurally impossible (not just conventionally
+unlikely) for a payment row to reference another tenant's subscription. Not exploitable today (the
+only writer always derives both ids from the same already-tenant-scoped row) — closed as
+defense-in-depth. Meta's and Razorpay's webhook endpoints also gained the same generous rate limit
+(300/min/IP) applied to `/api/auth/*`'s pattern, guarding the one remaining "sensitive public
+endpoint" category that had none.
+
+A full tenant-isolation audit (every model/service query, all 10 attack scenarios from the Step 10
+spec — cross-tenant lead/Meta/subscription/branding access, privilege escalation) found no other
+issues. See the Step 10 report (delivered in chat, not a file) for the complete findings list,
+regression results, and Final Phase 1 acceptance checklist.
 
 ## Everything else
 
