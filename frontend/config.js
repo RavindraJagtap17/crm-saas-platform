@@ -8,6 +8,6 @@
 // environment's backend lives.
 window.CRM_CONFIG = {
   API_BASE_URL: "http://localhost:4000",
-  GOOGLE_CLIENT_ID: "PLACEHOLDER_REPLACE_WITH_REAL_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "785542330678-msha6n6mrsla3vkc9p63cij6nj66jif5.apps.googleusercontent.com",
   RAZORPAY_KEY_ID: "PLACEHOLDER_REPLACE_WITH_REAL_RAZORPAY_TEST_KEY_ID",
 };
