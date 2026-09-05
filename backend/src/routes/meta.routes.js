@@ -36,8 +36,9 @@ router.post("/webhook", webhookLimiter, webhookController.receiveEvent);
 // metaIntegrationService.verifyState.
 router.get("/oauth/callback", controller.oauthCallback);
 
-// ---- Everything else: Tenant Admin only, tenant must be active (Step 9 §I) ----
-router.use(authenticate, tenantScope, requireActiveTenant, requireRole("tenant_admin"));
+// ---- Everything else: Client Admin only, both client and agency must be
+// active (Step 9 §I, two-level under the B2B2C model) ----
+router.use(authenticate, tenantScope, requireActiveTenant, requireRole("client_admin"));
 
 router.get("/connect", controller.connect);
 router.get("/connection", controller.getConnection);

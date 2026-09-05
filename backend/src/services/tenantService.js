@@ -2,10 +2,12 @@ const tenantModel = require("../models/tenantModel");
 const httpError = require("../utils/httpError");
 const { validateUpdateBranding } = require("../validators/tenantValidators");
 
-// What a Tenant Admin/Employee is allowed to see about their own tenant —
-// no subdomain/custom_domain exposure needed yet (reserved, unimplemented
-// per §G), and never another tenant's data (tenantId always comes from
-// the caller's own verified token).
+// What an Agency Admin is allowed to see about their own agency — branding
+// is agency-only under the B2B2C model (no Client Admin/Employee reaches
+// this service at all, see tenant.routes.js). No subdomain/custom_domain
+// exposure needed yet (reserved, unimplemented per §G), and never another
+// agency's data (tenantId always comes from the caller's own verified
+// token).
 function serializePublic(tenant) {
   if (!tenant) return null;
   return {
@@ -13,7 +15,6 @@ function serializePublic(tenant) {
     name: tenant.name,
     slug: tenant.slug,
     status: tenant.status,
-    employeeLimit: tenant.employee_limit,
     logoUrl: tenant.logo_url,
     brandPrimaryColor: tenant.brand_primary_color,
   };

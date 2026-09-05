@@ -1,0 +1,3 @@
+ALTER TABLE client_subscriptions DROP FOREIGN KEY fk_client_subscriptions_tenant_pending_upgrade_plan;
+ALTER TABLE client_subscriptions DROP KEY idx_client_subscriptions_tenant_pending_upgrade_plan;
+ALTER TABLE client_subscriptions DROP COLUMN pending_upgrade_plan_id;

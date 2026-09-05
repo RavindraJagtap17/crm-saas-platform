@@ -1,7 +1,11 @@
 const pool = require("../config/db");
+const clientModel = require("./clientModel");
 
+// tenant_id is still NOT NULL/no-default on this table (Phase B additive
+// strategy) — queueIfAbsent() populates it, resolved from client_id,
+// purely to satisfy that constraint; never read back or used for scoping.
 const COLUMNS = `
-  id, tenant_id, lead_id, event_name, meta_event_id, status, retry_count,
+  id, client_id, lead_id, event_name, meta_event_id, status, retry_count,
   next_attempt_at, last_error, meta_response_code, sent_at, created_at, updated_at
 `;
 
@@ -10,25 +14,26 @@ async function findById(id) {
   return rows[0] || null;
 }
 
-async function findByLead(tenantId, leadId) {
+async function findByLead(clientId, leadId) {
   const [rows] = await pool.query(
-    `SELECT ${COLUMNS} FROM meta_capi_events WHERE tenant_id = ? AND lead_id = ? LIMIT 1`,
-    [tenantId, leadId]
+    `SELECT ${COLUMNS} FROM meta_capi_events WHERE client_id = ? AND lead_id = ? LIMIT 1`,
+    [clientId, leadId]
   );
   return rows[0] || null;
 }
 
-// §H idempotency: INSERT IGNORE against the (tenant_id, lead_id) UNIQUE
+// §H idempotency: INSERT IGNORE against the (client_id, lead_id) UNIQUE
 // key — if a row already exists for this lead (an earlier final-status
 // transition already queued one), this is a silent no-op, not an error.
 // Runs inside the caller's transaction (leadService.changeStatus) so
 // queuing is atomic with the status change itself.
-async function queueIfAbsent(conn, tenantId, leadId, { eventName, metaEventId }) {
+async function queueIfAbsent(conn, clientId, leadId, { eventName, metaEventId }) {
   const runner = conn || pool;
+  const tenantId = await clientModel.findTenantIdForClient(clientId);
   const [result] = await runner.query(
-    `INSERT IGNORE INTO meta_capi_events (tenant_id, lead_id, event_name, meta_event_id, status)
-     VALUES (?, ?, ?, ?, 'pending')`,
-    [tenantId, leadId, eventName, metaEventId]
+    `INSERT IGNORE INTO meta_capi_events (tenant_id, client_id, lead_id, event_name, meta_event_id, status)
+     VALUES (?, ?, ?, ?, ?, 'pending')`,
+    [tenantId, clientId, leadId, eventName, metaEventId]
   );
   if (result.affectedRows === 0) return null; // already existed — not queued again
   const [rows] = await runner.query(`SELECT ${COLUMNS} FROM meta_capi_events WHERE id = ?`, [result.insertId]);
@@ -80,11 +85,11 @@ async function markPermanentFailure(id, { retryCount, lastError, metaResponseCod
   );
 }
 
-// §K admin visibility — recent events for the caller's own tenant only.
-async function listForTenant(tenantId, limit = 50) {
+// §K admin visibility — recent events for the caller's own client only.
+async function listForClient(clientId, limit = 50) {
   const [rows] = await pool.query(
-    `SELECT ${COLUMNS} FROM meta_capi_events WHERE tenant_id = ? ORDER BY id DESC LIMIT ?`,
-    [tenantId, limit]
+    `SELECT ${COLUMNS} FROM meta_capi_events WHERE client_id = ? ORDER BY id DESC LIMIT ?`,
+    [clientId, limit]
   );
   return rows;
 }
@@ -98,5 +103,5 @@ module.exports = {
   markSent,
   markTemporaryFailure,
   markPermanentFailure,
-  listForTenant,
+  listForClient,
 };

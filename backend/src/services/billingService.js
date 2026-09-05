@@ -8,6 +8,9 @@ const razorpayClient = require("../integrations/razorpay/razorpayClient");
 const httpError = require("../utils/httpError");
 const config = require("../config");
 const { validateSubscribeBody, validatePlanChangeBody } = require("../validators/billingValidators");
+const agencySubscriptionModel = require("../models/agencySubscriptionModel");
+const agencySubscriptionPlanModel = require("../models/agencySubscriptionPlanModel");
+const agencySubscriptionPlanService = require("./agencySubscriptionPlanService");
 
 function serializeSubscription(subscription) {
   if (!subscription) return null;
@@ -240,6 +243,129 @@ async function cancel(tenantId, actor) {
   return tenant;
 }
 
+// ============================================================================
+// New business model — single-plan self-service Agency subscription
+// (agency_subscription_plan / agency_subscriptions, migrations 041/042).
+// Kept as fully separate functions/tables from everything above rather
+// than modified in place: subscribe()/changePlan()/getSubscriptionForTenant()
+// above still serve any tenant already on the old multi-plan catalog,
+// completely untouched, and the OLD subscriptions table's status ENUM has
+// no GRACE_PERIOD value to extend without editing migration 019 (forbidden).
+// The webhook (razorpayWebhookService.js) reconciles whichever table
+// actually has a matching razorpay_subscription_id — see its own comment.
+// ============================================================================
+
+function serializeAgencySubscription(subscription) {
+  if (!subscription) return null;
+  return {
+    id: subscription.id,
+    planId: subscription.plan_id,
+    status: subscription.status,
+    currentPeriodEnd: subscription.current_period_end,
+    gracePeriodEndsAt: subscription.grace_period_ends_at,
+    autoRenew: !!subscription.auto_renew,
+    createdAt: subscription.created_at,
+    updatedAt: subscription.updated_at,
+    razorpaySubscriptionId: subscription.razorpay_subscription_id,
+  };
+}
+
+// Razorpay only ever returns 'created' (rarely 'authenticated') at
+// creation time — both mean "not yet paid", i.e. local 'pending'. 'active'
+// is handled too, defensively, though not expected this early.
+function initialAgencyLocalStatus(razorpayStatus) {
+  return razorpayStatus === "active" ? "active" : "pending";
+}
+
+/**
+ * New-model counterpart to subscribe() above. No planId argument — there
+ * is exactly ONE Agency plan under the new model, so there is nothing to
+ * choose between. Called once, right after a self-service signup
+ * (auth.controller.js), and safe to call again later ONLY if no
+ * agency_subscriptions row exists yet for this tenant (mirrors subscribe()'s
+ * own "already exists -> 409, use the resume/change path instead" contract).
+ */
+async function initiateAgencySubscription(tenantId, actorUser) {
+  const existing = await agencySubscriptionModel.findByTenant(tenantId);
+  if (existing) {
+    throw httpError(
+      "This agency already has a subscription. Use GET /api/billing/agency-subscription to resume payment.",
+      409,
+      "SUBSCRIPTION_ALREADY_EXISTS"
+    );
+  }
+
+  const plan = await agencySubscriptionPlanService.requireActivePlan();
+  const tenant = await tenantModel.findById(tenantId);
+  if (!tenant) throw httpError("Agency not found.", 404);
+
+  const customer = await razorpayClient.createCustomer({
+    name: actorUser.name,
+    email: actorUser.email,
+    notes: { crm_tenant_id: String(tenantId) },
+  });
+
+  const razorpaySubscription = await razorpayClient.createSubscription({ planId: plan.razorpay_plan_id, tenantId });
+
+  const subscription = await agencySubscriptionModel.create(null, {
+    tenantId,
+    planId: plan.id,
+    razorpaySubscriptionId: razorpaySubscription.id,
+    razorpayCustomerId: customer.id,
+    status: initialAgencyLocalStatus(razorpaySubscription.status),
+  });
+
+  return {
+    subscription: serializeAgencySubscription(subscription),
+    checkout: {
+      razorpayKeyId: config.razorpay.keyId,
+      razorpaySubscriptionId: razorpaySubscription.id,
+      planName: "Agency Subscription",
+      amount: plan.price,
+      currency: plan.currency,
+    },
+  };
+}
+
+async function getAgencySubscriptionForTenant(tenantId) {
+  const subscription = await agencySubscriptionModel.findByTenant(tenantId);
+  if (!subscription) return { subscription: null, plan: null };
+  const plan = await agencySubscriptionPlanModel.get();
+  return {
+    subscription: serializeAgencySubscription(subscription),
+    plan: plan ? { price: plan.price, currency: plan.currency, billingCycle: plan.billing_cycle } : null,
+  };
+}
+
+/**
+ * Self-service Agency Admin cancellation — "Cancellation disables future
+ * auto-renewal. Agency continues using the platform until the already-
+ * paid period ends." Uses Razorpay's cancel_at_cycle_end mechanism
+ * (razorpayClient.cancelSubscription, reused exactly as-is — same function
+ * the existing Super-Admin-only cancel() below already calls, just with
+ * the opposite flag) rather than an immediate hard stop.
+ *
+ * auto_renew is written immediately after Razorpay's synchronous API
+ * response confirms the request was accepted — the same precedent
+ * suspend()/resume()/cancel() below already established ("the trigger
+ * here is a synchronous, our-own-backend-authenticated Razorpay API
+ * response... not an unverified client redirect"). status itself is left
+ * untouched: it still reads 'active' until the webhook eventually
+ * confirms Razorpay's own cycle-end cancellation — the webhook remains
+ * the sole writer of status, per the required status discipline.
+ */
+async function cancelAgencySubscription(tenantId) {
+  const subscription = await agencySubscriptionModel.findByTenant(tenantId);
+  if (!subscription) throw httpError("No agency subscription found.", 404, "NO_SUBSCRIPTION");
+  if (!subscription.auto_renew) {
+    throw httpError("This subscription is already set to not renew.", 400, "ALREADY_NOT_RENEWING");
+  }
+
+  await razorpayClient.cancelSubscription(subscription.razorpay_subscription_id, { cancelAtCycleEnd: true });
+  const updated = await agencySubscriptionModel.setAutoRenewFalse(tenantId);
+  return serializeAgencySubscription(updated);
+}
+
 module.exports = {
   getSubscriptionForTenant,
   listPaymentsForTenant,
@@ -249,4 +375,8 @@ module.exports = {
   resume,
   cancel,
   serializeSubscription,
+  initiateAgencySubscription,
+  getAgencySubscriptionForTenant,
+  cancelAgencySubscription,
+  serializeAgencySubscription,
 };

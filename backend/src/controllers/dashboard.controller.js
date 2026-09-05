@@ -3,9 +3,9 @@ const asyncHandler = require("../utils/asyncHandler");
 
 const summary = asyncHandler(async (req, res) => {
   const data =
-    req.user.role === "tenant_admin"
-      ? await dashboardService.summaryForAdmin(req.tenantId)
-      : await dashboardService.summaryForEmployee(req.tenantId, req.user.sub);
+    req.user.role === "client_admin"
+      ? await dashboardService.summaryForAdmin(req.clientId)
+      : await dashboardService.summaryForEmployee(req.clientId, req.user.sub);
   res.json(data);
 });
 

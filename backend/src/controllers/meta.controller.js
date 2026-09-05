@@ -11,7 +11,7 @@ const config = require("../config");
 // a JSON response rather than a redirect so the access token stays in
 // the Authorization header for this call, not a URL — see meta.routes.js).
 const connect = asyncHandler(async (req, res) => {
-  const result = await metaIntegrationService.beginConnect(req.tenantId, req.user.sub);
+  const result = await metaIntegrationService.beginConnect(req.clientId, req.user.sub);
   res.json(result);
 });
 
@@ -37,11 +37,11 @@ const oauthCallback = asyncHandler(async (req, res) => {
 });
 
 const getConnection = asyncHandler(async (req, res) => {
-  res.json(await metaIntegrationService.getConnection(req.tenantId));
+  res.json(await metaIntegrationService.getConnection(req.clientId));
 });
 
 const disconnect = asyncHandler(async (req, res) => {
-  await metaIntegrationService.disconnect(req.tenantId);
+  await metaIntegrationService.disconnect(req.clientId);
   res.status(204).send();
 });
 
@@ -49,21 +49,21 @@ const disconnect = asyncHandler(async (req, res) => {
 // conversion events are sent to. A field on the existing Step 7
 // connection, not a second connect flow — see migration 016.
 const updateConnection = asyncHandler(async (req, res) => {
-  const connection = await metaIntegrationService.setPixelId(req.tenantId, req.body?.pixelId);
+  const connection = await metaIntegrationService.setPixelId(req.clientId, req.body?.pixelId);
   res.json(connection);
 });
 
 // GET /api/meta/capi/events — Step 8 §K: minimum admin visibility into
 // recent conversion sends for the caller's own tenant only.
 const listCapiEvents = asyncHandler(async (req, res) => {
-  res.json({ events: await metaCapiEventModel.listForTenant(req.tenantId, 100) });
+  res.json({ events: await metaCapiEventModel.listForClient(req.clientId, 100) });
 });
 
 // GET /api/meta/forms — "see connected Meta forms where available" (§I).
 // Requires a live, non-expired connection; fails clearly otherwise
 // rather than silently returning an empty list.
 const listForms = asyncHandler(async (req, res) => {
-  const connection = await metaIntegrationService.getDecryptedAccessToken(req.tenantId);
+  const connection = await metaIntegrationService.getDecryptedAccessToken(req.clientId);
   if (!connection) throw httpError("Connect a Meta account first.", 400, "META_NOT_CONNECTED");
   if (metaIntegrationService.isTokenExpired(connection.settings)) {
     throw httpError("Your Meta connection has expired. Please reconnect.", 400, "META_TOKEN_EXPIRED");
@@ -73,21 +73,21 @@ const listForms = asyncHandler(async (req, res) => {
 });
 
 const listMappings = asyncHandler(async (req, res) => {
-  res.json({ mappings: await metaFormFieldMappingService.list(req.tenantId, req.query.formId) });
+  res.json({ mappings: await metaFormFieldMappingService.list(req.clientId, req.query.formId) });
 });
 
 const createMapping = asyncHandler(async (req, res) => {
-  const mapping = await metaFormFieldMappingService.create(req.tenantId, req.body);
+  const mapping = await metaFormFieldMappingService.create(req.clientId, req.body);
   res.status(201).json({ mapping });
 });
 
 const updateMapping = asyncHandler(async (req, res) => {
-  const mapping = await metaFormFieldMappingService.update(req.tenantId, req.params.id, req.body);
+  const mapping = await metaFormFieldMappingService.update(req.clientId, req.params.id, req.body);
   res.json({ mapping });
 });
 
 const removeMapping = asyncHandler(async (req, res) => {
-  await metaFormFieldMappingService.remove(req.tenantId, req.params.id);
+  await metaFormFieldMappingService.remove(req.clientId, req.params.id);
   res.status(204).send();
 });
 

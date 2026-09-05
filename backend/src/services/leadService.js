@@ -19,20 +19,23 @@ const {
   validateAssignment,
 } = require("../validators/leadValidators");
 
-// Employees only ever see their own assigned leads; Tenant Admin sees the
-// whole tenant. This one function is the single place that decision is
-// made, and it's expressed as a query-scope object consumed directly by
-// leadModel's WHERE clauses — never as a separate "check after fetching"
-// step.
-function scopeFor(actor) {
-  return actor.role === "tenant_employee" ? { restrictToUserId: actor.userId } : {};
+// B2B2C restructure (Business Decision: Client Employee behavior change):
+// a Client Employee now sees ALL of their client's leads, not just their
+// own assigned ones — the old tenant_employee "assigned_to = self"
+// restriction on LIST/GET/UPDATE is gone. What still differs by role is
+// PERMISSION (only client_admin may assign/reassign — enforced by route
+// RBAC, not here), not visibility. Kept as a named function (rather than
+// inlined `{}`) so every call site's intent stays self-documenting and a
+// future visibility rule has exactly one place to live.
+function scopeFor(_actor) {
+  return {};
 }
 
 function serializeLead(row) {
   if (!row) return null;
   return {
     id: row.id,
-    tenantId: row.tenant_id,
+    clientId: row.client_id,
     name: row.name,
     phone: row.phone,
     email: row.email,
@@ -53,25 +56,24 @@ function serializeLead(row) {
 /**
  * §C manual creation + §H duplicate detection, combined: every lead this
  * app can currently create goes through here (Meta/website-form ingestion
- * are later steps, not built yet), so this is the one place duplicate
- * detection needs to live for now.
+ * included), so this is the one place duplicate detection needs to live.
  */
-async function createLead(tenantId, actor, body) {
+async function createLead(clientId, actor, body) {
   const clean = validateCreateLead(body);
 
   let sourceId = clean.sourceId;
   if (sourceId) {
-    await leadSourceService.requireBelongsToTenant(tenantId, sourceId);
+    await leadSourceService.requireBelongsToClient(clientId, sourceId);
   } else {
-    const manualSource = await leadSourceModel.findOrCreateManualSource(tenantId);
+    const manualSource = await leadSourceModel.findOrCreateManualSource(clientId);
     sourceId = manualSource.id;
   }
 
   if (clean.productId) {
-    await productService.requireBelongsToTenant(tenantId, clean.productId);
+    await productService.requireBelongsToClient(clientId, clean.productId);
   }
 
-  const customFields = await customFieldService.validateForLead(tenantId, clean.customFields);
+  const customFields = await customFieldService.validateForLead(clientId, clean.customFields);
   const normalizedPhone = normalizePhone(clean.phone);
 
   const created = await withTransaction(async (conn) => {
@@ -82,14 +84,14 @@ async function createLead(tenantId, actor, body) {
       // FOR UPDATE inside the transaction — see leadModel for why this is
       // what actually prevents two concurrent creations with the same
       // phone number from both seeing "no duplicate yet".
-      const earliest = await leadModel.findEarliestByPhoneForUpdate(conn, tenantId, normalizedPhone);
+      const earliest = await leadModel.findEarliestByPhoneForUpdate(conn, clientId, normalizedPhone);
       if (earliest) {
         isDuplicate = true;
         duplicateOfLeadId = earliest.id;
       }
     }
 
-    return leadModel.insert(conn, tenantId, {
+    return leadModel.insert(conn, clientId, {
       name: clean.name ?? null,
       phone: normalizedPhone,
       email: clean.email ?? null,
@@ -110,10 +112,10 @@ async function createLead(tenantId, actor, body) {
       // reachable directly from client input (POST /api/leads passes
       // req.body straight through, see lead.controller.js), so the
       // previous "never client-writable" premise was false: any
-      // authenticated tenant user could set an arbitrary metaLeadId,
-      // which (via leads.meta_lead_id's platform-wide, non-tenant-scoped
+      // authenticated client user could set an arbitrary metaLeadId,
+      // which (via leads.meta_lead_id's platform-wide, non-client-scoped
       // UNIQUE index — required so Step 7's webhook idempotency check
-      // works across tenants) let Tenant A pre-claim Tenant B's Meta
+      // works across clients) let Client A pre-claim Client B's Meta
       // leadgen_id and silently swallow that lead when Meta's webhook
       // later delivered it — see the Step 10 regression test.
       metaLeadId: actor?.role === "meta_integration" && typeof body?.metaLeadId === "string" && body.metaLeadId.trim() ? body.metaLeadId.trim() : undefined,
@@ -125,30 +127,30 @@ async function createLead(tenantId, actor, body) {
   return serializeLead(created);
 }
 
-async function getLead(tenantId, actor, id) {
-  const lead = await leadModel.findById(tenantId, id, scopeFor(actor));
+async function getLead(clientId, actor, id) {
+  const lead = await leadModel.findById(clientId, id, scopeFor(actor));
   if (!lead) throw httpError("Lead not found.", 404);
   return serializeLead(lead);
 }
 
-async function listLeads(tenantId, actor, query = {}) {
+async function listLeads(clientId, actor, query = {}) {
   const { page, pageSize, offset } = parsePagination(query);
 
   const filters = {};
   if (query.statusId) filters.statusId = Number(query.statusId);
   if (query.sourceId) filters.sourceId = Number(query.sourceId);
   if (query.productId) filters.productId = Number(query.productId);
-  // Only meaningful for an admin — an employee's results are already
-  // pinned to themself by scopeFor(), so this filter is ignored for them
-  // rather than silently letting them probe another employee's id.
-  if (actor.role === "tenant_admin" && query.assignedTo) filters.assignedTo = Number(query.assignedTo);
+  // Both roles can reach here now (an employee's results are no longer
+  // pinned to themself — see scopeFor above) — assignedTo filtering is
+  // just a normal query filter for either role.
+  if (query.assignedTo) filters.assignedTo = Number(query.assignedTo);
   if (query.isDuplicate !== undefined) filters.isDuplicate = query.isDuplicate === "true";
   if (query.q) filters.q = String(query.q).trim().slice(0, 255);
 
   const scope = scopeFor(actor);
   const [rows, total] = await Promise.all([
-    leadModel.list(tenantId, { ...scope, filters, limit: pageSize, offset }),
-    leadModel.count(tenantId, { ...scope, filters }),
+    leadModel.list(clientId, { ...scope, filters, limit: pageSize, offset }),
+    leadModel.count(clientId, { ...scope, filters }),
   ]);
 
   return {
@@ -157,27 +159,27 @@ async function listLeads(tenantId, actor, query = {}) {
   };
 }
 
-async function updateLead(tenantId, actor, id, body) {
+async function updateLead(clientId, actor, id, body) {
   const clean = validateUpdateLead(body);
   const scope = scopeFor(actor);
 
-  if (clean.sourceId) await leadSourceService.requireBelongsToTenant(tenantId, clean.sourceId);
-  if (clean.productId) await productService.requireBelongsToTenant(tenantId, clean.productId);
+  if (clean.sourceId) await leadSourceService.requireBelongsToClient(clientId, clean.sourceId);
+  if (clean.productId) await productService.requireBelongsToClient(clientId, clean.productId);
 
   const patch = { ...clean };
   if (clean.phone !== undefined) patch.phone = normalizePhone(clean.phone);
   if (clean.customFields !== undefined) {
-    patch.customFields = await customFieldService.validateForLead(tenantId, clean.customFields);
+    patch.customFields = await customFieldService.validateForLead(clientId, clean.customFields);
   }
 
-  const updated = await leadModel.updateFields(tenantId, id, patch, scope);
+  const updated = await leadModel.updateFields(clientId, id, patch, scope);
   if (!updated) throw httpError("Lead not found.", 404);
   return serializeLead(updated);
 }
 
-async function deleteLead(tenantId, id) {
+async function deleteLead(clientId, id) {
   try {
-    const deleted = await leadModel.remove(tenantId, id);
+    const deleted = await leadModel.remove(clientId, id);
     if (!deleted) throw httpError("Lead not found.", 404);
   } catch (err) {
     if (err.errno === 1451 || err.code === "ER_ROW_IS_REFERENCED_2") {
@@ -195,20 +197,20 @@ async function deleteLead(tenantId, id) {
  * in the same transaction. No Meta CAPI triggering here — that's a later
  * step reading this same history table.
  */
-async function changeStatus(tenantId, actor, id, body) {
+async function changeStatus(clientId, actor, id, body) {
   const statusId = validateStatusChange(body);
   const scope = scopeFor(actor);
 
-  const lead = await leadModel.findById(tenantId, id, scope);
+  const lead = await leadModel.findById(clientId, id, scope);
   if (!lead) throw httpError("Lead not found.", 404);
 
-  const targetStatus = await leadStatusService.requireBelongsToTenant(tenantId, statusId);
+  const targetStatus = await leadStatusService.requireBelongsToClient(clientId, statusId);
   const fromStatusId = lead.status_id;
 
   const queuedCapiEvent = await withTransaction(async (conn) => {
-    const ok = await leadModel.updateStatus(conn, tenantId, id, statusId, scope);
+    const ok = await leadModel.updateStatus(conn, clientId, id, statusId, scope);
     if (!ok) throw httpError("Lead not found.", 404);
-    await leadStatusHistoryModel.create(conn, tenantId, {
+    await leadStatusHistoryModel.create(conn, clientId, {
       leadId: id,
       fromStatusId,
       toStatusId: statusId,
@@ -219,33 +221,33 @@ async function changeStatus(tenantId, actor, id, body) {
     // here (§I: a Meta API failure must never roll back or delay the
     // status change) — see the scheduleProcessing() call below, which only
     // runs after this transaction has already committed successfully.
-    return metaCapiService.maybeQueueConversion(conn, tenantId, id, targetStatus);
+    return metaCapiService.maybeQueueConversion(conn, clientId, id, targetStatus);
   });
 
   if (queuedCapiEvent) metaCapiService.scheduleProcessing(queuedCapiEvent.id);
 
-  return serializeLead(await leadModel.findById(tenantId, id, scope));
+  return serializeLead(await leadModel.findById(clientId, id, scope));
 }
 
 /**
- * §I: Tenant Admin only (enforced by route RBAC, not repeated here) — the
- * target employee/admin must exist in the same tenant. Writes an
+ * §I: Client Admin only (enforced by route RBAC, not repeated here) — the
+ * target employee/admin must exist in the same client. Writes an
  * `assignment`-type lead_activities row in the same transaction.
  */
-async function assignLead(tenantId, actor, id, body) {
+async function assignLead(clientId, actor, id, body) {
   const assignedTo = validateAssignment(body);
 
-  const lead = await leadModel.findById(tenantId, id);
+  const lead = await leadModel.findById(clientId, id);
   if (!lead) throw httpError("Lead not found.", 404);
 
   let remarks = "Unassigned";
   if (assignedTo !== null) {
     const target = await userModel.findById(assignedTo);
-    if (!target || target.tenant_id !== tenantId) {
-      throw httpError("assignedTo must be a user in your own tenant.", 400);
+    if (!target || target.client_id !== clientId) {
+      throw httpError("assignedTo must be a user in your own client.", 400);
     }
-    if (!["tenant_admin", "tenant_employee"].includes(target.role_name)) {
-      throw httpError("Leads can only be assigned to a Tenant Admin or Tenant Employee.", 400);
+    if (!["client_admin", "client_employee"].includes(target.role_name)) {
+      throw httpError("Leads can only be assigned to a Client Admin or Client Employee.", 400);
     }
     if (target.status !== "active") {
       throw httpError("Cannot assign a lead to an inactive or not-yet-activated account.", 400);
@@ -254,9 +256,9 @@ async function assignLead(tenantId, actor, id, body) {
   }
 
   await withTransaction(async (conn) => {
-    const ok = await leadModel.updateAssignment(conn, tenantId, id, assignedTo);
+    const ok = await leadModel.updateAssignment(conn, clientId, id, assignedTo);
     if (!ok) throw httpError("Lead not found.", 404);
-    await leadActivityModel.create(conn, tenantId, {
+    await leadActivityModel.create(conn, clientId, {
       leadId: id,
       userId: actor.userId,
       type: "assignment",
@@ -265,7 +267,7 @@ async function assignLead(tenantId, actor, id, body) {
     });
   });
 
-  return serializeLead(await leadModel.findById(tenantId, id));
+  return serializeLead(await leadModel.findById(clientId, id));
 }
 
 module.exports = {

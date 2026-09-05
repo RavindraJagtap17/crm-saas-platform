@@ -103,10 +103,11 @@ function openForm(listEl, status) {
 }
 
 async function main() {
-  const user = await requireRole("tenant_admin");
+  const user = await requireRole("client_admin");
   if (!user) return;
-  await applyTenantBranding();
   const content = mountShell({ activeKey: "statuses", title: "Lead Statuses" });
+  if (!content) return;
+  await applyTenantBranding();
 
   content.innerHTML = `
     <div class="page-header">

@@ -62,7 +62,12 @@ export function relativeTime(value) {
   return formatDate(value);
 }
 
-const ROLE_LABELS = { super_admin: "Super Admin", tenant_admin: "Admin", tenant_employee: "Employee" };
+const ROLE_LABELS = {
+  super_admin: "Super Admin",
+  agency_admin: "Agency Admin",
+  client_admin: "Client Admin",
+  client_employee: "Employee",
+};
 export function roleLabel(role) {
   return ROLE_LABELS[role] || role;
 }

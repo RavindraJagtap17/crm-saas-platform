@@ -10,6 +10,8 @@ const PROTECTED_FIELDS = [
   "id",
   "tenantId",
   "tenant_id",
+  "clientId",
+  "client_id",
   "isDuplicate",
   "is_duplicate",
   "duplicateOfLeadId",

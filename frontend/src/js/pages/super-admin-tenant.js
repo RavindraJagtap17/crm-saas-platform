@@ -3,22 +3,35 @@ import { mountShell } from "../components/shell.js";
 import { superAdminApi } from "../api/resources.js";
 import { confirmDialog, openModal } from "../components/modal.js";
 import { toastSuccess, toastError } from "../components/toast.js";
-import { escapeHtml, formatDate, formatDateTime, formatMoney, accountStatusBadge, roleLabel, setButtonLoading, emptyState } from "../components/ui.js";
+import { escapeHtml, formatDate, formatDateTime, formatMoney, accountStatusBadge, setButtonLoading, emptyState } from "../components/ui.js";
 
+// New business model — single-plan self-service Agency subscription
+// (agency_subscription_plan/agency_subscriptions). Status labels mirror
+// admin-billing.js's own Client-subscription vocabulary exactly, since
+// both use the same 5-value status enum (pending/active/grace_period/
+// cancelled/expired).
+const SUBSCRIPTION_STATUS_LABEL = {
+  pending: "Awaiting payment",
+  active: "Active",
+  grace_period: "Grace period",
+  cancelled: "Cancelled",
+  expired: "Expired",
+};
 const SUBSCRIPTION_STATUS_BADGE = {
-  created: "badge-neutral",
-  authenticated: "badge-neutral",
-  active: "badge-success",
   pending: "badge-warning",
-  halted: "badge-danger",
-  paused: "badge-warning",
+  active: "badge-success",
+  grace_period: "badge-warning",
   cancelled: "badge-neutral",
-  completed: "badge-neutral",
   expired: "badge-neutral",
 };
 
 const tenantId = new URLSearchParams(window.location.search).get("id");
 
+// Manual escape-hatch for an agency with NO subscription in either billing
+// system yet (e.g. before they've completed signup+payment) — flips
+// tenants.status directly via superAdminService.updateStatus, independent
+// of any subscription model. Not part of the Agency billing migration:
+// left exactly as it was.
 const STATUS_ACTIONS = {
   pending_payment: [{ to: "active", label: "Activate", danger: false }],
   active: [{ to: "suspended", label: "Suspend", danger: true }],
@@ -29,42 +42,39 @@ const STATUS_ACTIONS = {
   canceled: [{ to: "active", label: "Reactivate", danger: false }],
 };
 
-function openChangePlanModal(currentPlanId, plans, onChanged) {
-  const selectable = plans.filter((p) => p.is_active && p.id !== currentPlanId);
+function openInviteAgencyAdminModal(onInvited) {
   openModal({
-    title: "Change this tenant's plan",
+    title: "Invite Agency Admin",
     bodyHtml: `
-      <form id="scp-form" novalidate>
+      <form id="ia-form" novalidate>
         <div class="field">
-          <label class="label" for="scp-plan">New plan</label>
-          <select class="select" id="scp-plan">
-            ${selectable.map((p) => `<option value="${p.id}">${escapeHtml(p.name)} — ${formatMoney(p.price, p.currency)}/${escapeHtml(p.billing_cycle)}</option>`).join("")}
-          </select>
+          <label class="label" for="ia-name">Name</label>
+          <input class="input" id="ia-name" placeholder="Jane Doe" />
         </div>
         <div class="field">
-          <label class="label">When should this take effect?</label>
-          <div class="flex-col gap-2">
-            <label class="text-sm flex items-center gap-2"><input type="radio" name="scp-timing" value="now" checked /> Immediately</label>
-            <label class="text-sm flex items-center gap-2"><input type="radio" name="scp-timing" value="cycle_end" /> At the end of the current billing cycle</label>
-          </div>
+          <label class="label" for="ia-email">Email</label>
+          <input class="input" type="email" id="ia-email" placeholder="jane@agency.com" />
+          <span class="hint">They'll sign in with this exact Google account.</span>
         </div>
-        <div class="field-error" id="scp-error" hidden></div>
+        <div class="field-error" id="ia-error" hidden></div>
       </form>`,
-    footerHtml: `<button class="btn btn-secondary" data-cancel>Cancel</button><button class="btn btn-primary" id="scp-submit">Request change</button>`,
+    footerHtml: `<button class="btn btn-secondary" data-cancel>Cancel</button><button class="btn btn-primary" id="ia-submit">Send invite</button>`,
     onMount: (modalEl, closeFn) => {
       modalEl.querySelector("[data-cancel]").addEventListener("click", closeFn);
-      modalEl.querySelector("#scp-submit").addEventListener("click", async (e) => {
+      modalEl.querySelector("#ia-submit").addEventListener("click", async (e) => {
         const btn = e.currentTarget;
-        const errEl = modalEl.querySelector("#scp-error");
+        const errEl = modalEl.querySelector("#ia-error");
         errEl.hidden = true;
         setButtonLoading(btn, true);
-        const planId = Number(modalEl.querySelector("#scp-plan").value);
-        const timing = modalEl.querySelector('input[name="scp-timing"]:checked').value;
         try {
-          const result = await superAdminApi.changeTenantPlan(tenantId, planId, timing);
+          await superAdminApi.inviteAgencyAdmin(tenantId, {
+            name: modalEl.querySelector("#ia-name").value.trim(),
+            email: modalEl.querySelector("#ia-email").value.trim(),
+            role: "agency_admin",
+          });
           closeFn();
-          toastSuccess(result.message);
-          onChanged();
+          toastSuccess("Agency Admin invited.");
+          onInvited();
         } catch (err) {
           errEl.hidden = false;
           errEl.textContent = err.message;
@@ -76,40 +86,54 @@ function openChangePlanModal(currentPlanId, plans, onChanged) {
   });
 }
 
+/**
+ * New business model — single-plan self-service Agency subscription.
+ * Read-only: the finalized model gives Super Admin no manual suspend/
+ * resume/change-plan control over it (unlike the old §K catalog override
+ * this replaces) — recovery is Agency-Admin self-service (their own
+ * Billing page), and expiry is webhook/grace-period driven. The one
+ * escape hatch that remains is STATUS_ACTIONS below, shown only when no
+ * subscription exists at all in either system.
+ */
 function subscriptionCardHtml(subscription, plan) {
   if (!subscription) {
-    return `<p class="text-sm mb-4">This tenant has no subscription yet — it hasn't completed self-service signup/checkout.
-      The controls below are a manual override of the account status Razorpay would otherwise gate (§H/§K).</p>
+    return `<p class="text-sm mb-4">This agency has no subscription yet.
+      The controls below are a manual override of the account status Razorpay would otherwise gate.</p>
       <div class="flex gap-2" id="status-actions"></div>`;
   }
   return `
     <div class="field-row mb-4">
-      <div><span class="label">Plan</span><p>${plan ? escapeHtml(plan.name) : "—"}</p></div>
-      <div><span class="label">Status</span><p><span class="badge ${SUBSCRIPTION_STATUS_BADGE[subscription.status] || "badge-neutral"}">${escapeHtml(subscription.status)}</span></p></div>
-      <div><span class="label">Period ends</span><p>${subscription.currentPeriodEnd ? formatDateTime(subscription.currentPeriodEnd) : "—"}</p></div>
+      <div><span class="label">Price</span><p>${plan ? `${formatMoney(plan.price, plan.currency)} / ${escapeHtml(plan.billingCycle || "yearly")}` : "—"}</p></div>
+      <div><span class="label">Status</span><p><span class="badge ${SUBSCRIPTION_STATUS_BADGE[subscription.status] || "badge-neutral"}">${escapeHtml(SUBSCRIPTION_STATUS_LABEL[subscription.status] || subscription.status)}</span></p></div>
+      <div><span class="label">Current period ends</span><p>${subscription.currentPeriodEnd ? formatDateTime(subscription.currentPeriodEnd) : "—"}</p></div>
     </div>
-    <div class="flex gap-2 mb-2" id="subscription-actions"></div>
+    ${
+      subscription.status === "grace_period"
+        ? `<div class="alert alert-warning mb-4"><span>⚠</span><span>In grace period${subscription.gracePeriodEndsAt ? ` until ${escapeHtml(formatDateTime(subscription.gracePeriodEndsAt))}` : ""} — the agency stays usable until then.</span></div>`
+        : ""
+    }
+    ${
+      !subscription.autoRenew && ["pending", "active", "grace_period"].includes(subscription.status)
+        ? `<div class="alert alert-warning mb-4"><span>ⓘ</span><span>Auto-renewal is off — access continues until the current period ends, then this subscription ends.</span></div>`
+        : ""
+    }
     <div class="flex gap-2" id="status-actions"></div>
   `;
 }
 
 async function render(content) {
-  let data, billing, plans;
+  let data, billing;
   try {
-    [data, billing, plans] = await Promise.all([
-      superAdminApi.getTenant(tenantId),
-      superAdminApi.getTenantSubscription(tenantId),
-      superAdminApi.listPlans().then((r) => r.plans),
-    ]);
+    [data, billing] = await Promise.all([superAdminApi.getTenant(tenantId), superAdminApi.getTenantAgencySubscription(tenantId)]);
   } catch (err) {
-    content.innerHTML = emptyState({ icon: "⚠", title: "Couldn't load this tenant", desc: err.message });
+    content.innerHTML = emptyState({ icon: "⚠", title: "Couldn't load this agency", desc: err.message });
     return;
   }
-  const { tenant, employeeSeatsUsed, users } = data;
+  const { tenant, clientCount, clients, users } = data;
   const { subscription, plan } = billing;
 
   content.innerHTML = `
-    <a href="./index.html" class="text-sm">← All tenants</a>
+    <a href="./index.html" class="text-sm">← All agencies</a>
     <div class="page-header mt-2">
       <div>
         <h2 class="page-title">${escapeHtml(tenant.name)}</h2>
@@ -120,16 +144,26 @@ async function render(content) {
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-6)">
       <div class="card">
-        <div class="card-header"><h3 class="card-title">Employee limit</h3></div>
-        <div class="card-body">
-          <p class="text-sm mb-4">${employeeSeatsUsed} of <strong class="num">${tenant.employeeLimit}</strong> employee seats used.</p>
-          <div class="field-row" style="align-items:end">
-            <div class="field" style="margin-bottom:0">
-              <label class="label" for="limit-input">New limit</label>
-              <input class="input" type="number" min="0" id="limit-input" value="${tenant.employeeLimit}" />
-            </div>
-            <button class="btn btn-secondary" id="limit-save">Update limit</button>
-          </div>
+        <div class="card-header"><h3 class="card-title">Agency Admins (${users.length})</h3><button class="btn btn-secondary btn-sm" id="invite-admin-btn">+ Invite Agency Admin</button></div>
+        <div class="table-wrap" style="border:none;border-radius:0">
+          ${
+            users.length
+              ? `<table class="data-table">
+                  <thead><tr><th>Name</th><th>Email</th><th>Status</th></tr></thead>
+                  <tbody>
+                    ${users
+                      .map(
+                        (u) => `<tr>
+                          <td data-label="Name" class="table-cell-primary">${escapeHtml(u.name)}</td>
+                          <td data-label="Email" class="table-cell-muted">${escapeHtml(u.email)}</td>
+                          <td data-label="Status">${accountStatusBadge(u.status)}</td>
+                        </tr>`
+                      )
+                      .join("")}
+                  </tbody>
+                </table>`
+              : `<div class="card-body">${emptyState({ title: "No Agency Admin invited yet" })}</div>`
+          }
         </div>
       </div>
 
@@ -142,50 +176,33 @@ async function render(content) {
     </div>
 
     <div class="card mt-6">
-      <div class="card-header"><h3 class="card-title">Team (${users.length})</h3></div>
+      <div class="card-header"><h3 class="card-title">Clients (${clientCount})</h3></div>
       <div class="table-wrap" style="border:none;border-radius:0">
         ${
-          users.length
+          clients.length
             ? `<table class="data-table">
-                <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
+                <thead><tr><th>Name</th><th>Status</th><th>Created</th></tr></thead>
                 <tbody>
-                  ${users
+                  ${clients
                     .map(
-                      (u) => `<tr>
-                        <td data-label="Name" class="table-cell-primary">${escapeHtml(u.name)}</td>
-                        <td data-label="Email" class="table-cell-muted">${escapeHtml(u.email)}</td>
-                        <td data-label="Role">${roleLabel(u.role)}</td>
-                        <td data-label="Status">${accountStatusBadge(u.status)}</td>
+                      (c) => `<tr>
+                        <td data-label="Name" class="table-cell-primary">${escapeHtml(c.name)}</td>
+                        <td data-label="Status">${c.status === "active" ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-neutral">Inactive</span>'}</td>
+                        <td data-label="Created" class="text-secondary text-sm">${formatDate(c.created_at)}</td>
                       </tr>`
                     )
                     .join("")}
                 </tbody>
               </table>`
-            : `<div class="card-body">${emptyState({ title: "No team members yet" })}</div>`
+            : `<div class="card-body">${emptyState({ title: "No clients yet", desc: "The Agency Admin adds clients from their own Clients page." })}</div>`
         }
       </div>
     </div>
   `;
 
-  document.getElementById("limit-save").addEventListener("click", async (e) => {
-    const btn = e.currentTarget;
-    const value = Number(document.getElementById("limit-input").value);
-    if (!Number.isInteger(value) || value < 0) return toastError("Enter a valid non-negative number.");
-    setButtonLoading(btn, true);
-    try {
-      await superAdminApi.updateEmployeeLimit(tenantId, value);
-      toastSuccess("Employee limit updated.");
-      render(content);
-    } catch (err) {
-      toastError(err.message);
-    } finally {
-      setButtonLoading(btn, false);
-    }
-  });
+  document.getElementById("invite-admin-btn").addEventListener("click", () => openInviteAgencyAdminModal(() => render(content)));
 
   if (!subscription) {
-    // No subscription yet — the only lever available is the raw tenant
-    // status (unchanged from before Step 9; kept for exactly this case).
     document.getElementById("status-actions").innerHTML = (STATUS_ACTIONS[tenant.status] || [])
       .map((a) => `<button class="btn ${a.danger ? "btn-danger" : "btn-primary"}" data-to="${a.to}">${a.label}</button>`)
       .join("");
@@ -193,15 +210,15 @@ async function render(content) {
       btn.addEventListener("click", async () => {
         const to = btn.dataset.to;
         const ok = await confirmDialog({
-          title: `${btn.textContent} this tenant?`,
-          message: `This changes ${tenant.name}'s status to "${to}", which affects whether their team can use the workspace.`,
+          title: `${btn.textContent} this agency?`,
+          message: `This changes ${tenant.name}'s status to "${to}", which affects whether their clients can use the workspace.`,
           confirmLabel: btn.textContent,
           danger: btn.classList.contains("btn-danger"),
         });
         if (!ok) return;
         try {
           await superAdminApi.updateStatus(tenantId, to);
-          toastSuccess(`Tenant status set to ${to}.`);
+          toastSuccess(`Agency status set to ${to}.`);
           render(content);
         } catch (err) {
           toastError(err.message);
@@ -211,59 +228,17 @@ async function render(content) {
     return;
   }
 
-  // §K: a real subscription exists — every action here goes through
-  // billingService (via these super-admin routes), which calls Razorpay's
-  // real pause/resume/cancel/update-plan APIs. Never blocked by the
-  // tenant's own status (Super Admin is exempt from requireActiveTenant).
-  const actionsEl = document.getElementById("subscription-actions");
-  const runAction = async (fn, confirmOpts) => {
-    if (confirmOpts) {
-      const ok = await confirmDialog(confirmOpts);
-      if (!ok) return;
-    }
-    try {
-      await fn();
-      toastSuccess("Done.");
-      render(content);
-    } catch (err) {
-      toastError(err.message);
-    }
-  };
-
-  if (subscription.status === "active") {
-    actionsEl.innerHTML = `<button class="btn btn-secondary" id="sa-change">Change plan</button><button class="btn btn-danger" id="sa-suspend">Suspend</button>`;
-    document.getElementById("sa-change").addEventListener("click", () => openChangePlanModal(subscription.planId, plans, () => render(content)));
-    document.getElementById("sa-suspend").addEventListener("click", () =>
-      runAction(() => superAdminApi.suspendTenantSubscription(tenantId), {
-        title: "Suspend this tenant?",
-        message: `${tenant.name}'s Razorpay subscription will be paused (no further charges) and their workspace access blocked until resumed.`,
-        confirmLabel: "Suspend",
-        danger: true,
-      })
-    );
-  } else if (["paused", "halted"].includes(subscription.status)) {
-    actionsEl.innerHTML = `<button class="btn btn-primary" id="sa-resume">Resume</button><button class="btn btn-danger" id="sa-cancel">Cancel</button>`;
-    document.getElementById("sa-resume").addEventListener("click", () => runAction(() => superAdminApi.resumeTenantSubscription(tenantId)));
-    document.getElementById("sa-cancel").addEventListener("click", () =>
-      runAction(() => superAdminApi.cancelTenantSubscription(tenantId), {
-        title: "Cancel this tenant's subscription?",
-        message: `This permanently ends ${tenant.name}'s Razorpay subscription. A new subscription would be required to reactivate.`,
-        confirmLabel: "Cancel subscription",
-        danger: true,
-      })
-    );
-  }
-  // created/authenticated/pending/cancelled/completed/expired: no override
-  // action offered here — either still awaiting the tenant's own payment,
-  // or already permanently ended.
+  // A subscription exists — no Super Admin actions in the finalized model
+  // (see subscriptionCardHtml's own comment); the card is read-only.
 }
 
 async function main() {
   const user = await requireRole("super_admin");
   if (!user) return;
-  const content = mountShell({ activeKey: "overview", title: "Tenant" });
+  const content = mountShell({ activeKey: "overview", title: "Agency" });
+  if (!content) return;
   if (!tenantId) {
-    content.innerHTML = emptyState({ title: "No tenant specified" });
+    content.innerHTML = emptyState({ title: "No agency specified" });
     return;
   }
   await render(content);

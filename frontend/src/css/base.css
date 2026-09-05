@@ -2,6 +2,12 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; }
+/* Restores the native [hidden] behavior: several components (e.g.
+   .field-error's display:flex) set their own `display` and would
+   otherwise unintentionally override the browser's default [hidden]
+   rule, since a same-specificity author rule always wins over the UA
+   stylesheet regardless of source order. */
+[hidden] { display: none !important; }
 body {
   margin: 0;
   background: var(--bg-app);

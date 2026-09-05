@@ -1,8 +1,8 @@
 /**
- * Reusable RBAC gate: requireRole("tenant_admin"), requireRole("tenant_admin",
- * "tenant_employee"), etc. Must run after `authenticate`. This is only the
- * mechanism — which roles a given future route allows is decided by that
- * route, not by any logic in here.
+ * Reusable RBAC gate: requireRole("client_admin"), requireRole("client_admin",
+ * "client_employee"), etc. Must run after `authenticate`. This is only the
+ * mechanism — which roles a given route allows is decided by that route,
+ * not by any logic in here.
  */
 function requireRole(...allowedRoles) {
   return (req, res, next) => {

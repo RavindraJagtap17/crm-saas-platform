@@ -88,10 +88,11 @@ async function loadAndRender(content) {
 }
 
 async function main() {
-  const user = await requireRole("tenant_admin");
+  const user = await requireRole("client_admin");
   if (!user) return;
-  await applyTenantBranding();
   const content = mountShell({ activeKey: "dashboard", title: "Dashboard" });
+  if (!content) return;
+  await applyTenantBranding();
   await loadAndRender(content);
 }
 

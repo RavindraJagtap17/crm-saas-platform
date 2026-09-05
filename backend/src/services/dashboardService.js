@@ -1,20 +1,22 @@
 const leadModel = require("../models/leadModel");
 
 /**
- * §E of the Final Specification. Tenant Admin gets tenant-wide numbers;
- * Tenant Employee gets only their own — the same scoping principle as
- * everywhere else in the lead engine, just aggregated instead of listed.
+ * §E of the Final Specification. Client Admin gets client-wide numbers;
+ * Client Employee also gets client-wide totals/breakdowns now (visibility
+ * is no longer restricted — see leadService.scopeFor) but keeps a
+ * personal "my assigned / my calls this month" summary as its own,
+ * separate concern (employeeTotals), not a substitute for the shared view.
  */
-async function summaryForAdmin(tenantId) {
+async function summaryForAdmin(clientId) {
   const [totals, sourceBreakdown, monthlyVolume, statusBreakdown] = await Promise.all([
-    leadModel.tenantTotals(tenantId),
-    leadModel.sourceBreakdown(tenantId),
-    leadModel.monthlyVolume(tenantId, 6),
-    leadModel.statusBreakdown(tenantId),
+    leadModel.clientTotals(clientId),
+    leadModel.sourceBreakdown(clientId),
+    leadModel.monthlyVolume(clientId, 6),
+    leadModel.statusBreakdown(clientId),
   ]);
 
   return {
-    scope: "tenant",
+    scope: "client",
     totals,
     sourceBreakdown: sourceBreakdown.map((r) => ({ sourceId: r.source_id, name: r.name, count: r.count })),
     monthlyVolume: monthlyVolume.map((r) => ({ month: r.month, count: r.count })),
@@ -27,10 +29,10 @@ async function summaryForAdmin(tenantId) {
   };
 }
 
-async function summaryForEmployee(tenantId, userId) {
+async function summaryForEmployee(clientId, userId) {
   const [totals, statusBreakdown] = await Promise.all([
-    leadModel.employeeTotals(tenantId, userId),
-    leadModel.statusBreakdown(tenantId, { restrictToUserId: userId }),
+    leadModel.employeeTotals(clientId, userId),
+    leadModel.statusBreakdown(clientId),
   ]);
 
   return {

@@ -7,7 +7,7 @@ const controller = require("../controllers/dashboard.controller");
 
 const router = express.Router();
 
-router.use(authenticate, tenantScope, requireActiveTenant, requireRole("tenant_admin", "tenant_employee"));
+router.use(authenticate, tenantScope, requireActiveTenant, requireRole("client_admin", "client_employee"));
 router.get("/summary", controller.summary);
 
 module.exports = router;

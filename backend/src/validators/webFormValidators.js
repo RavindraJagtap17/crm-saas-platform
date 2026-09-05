@@ -25,6 +25,13 @@ function validateAllowedDomains(value) {
 
 function validateCreateForm(body) {
   if (!isNonEmptyString(body?.name, 255)) throw httpError("name is required.", 400);
+  // B2B2C restructure: every form now targets exactly one client — this is
+  // what makes web_forms a dual-scoped (Category C) resource. Required,
+  // never inferred/defaulted, and validated against the caller's own
+  // agency by webFormService.requireOwnClient — never trusted on its own.
+  if (!isOptionalPositiveInt(body?.clientId) || !body?.clientId) {
+    throw httpError("clientId is required.", 400);
+  }
   if (!isOptionalPositiveInt(body?.sourceId) || !body?.sourceId) {
     throw httpError("sourceId is required.", 400);
   }
@@ -32,6 +39,7 @@ function validateCreateForm(body) {
 
   return {
     name: body.name.trim(),
+    clientId: Number(body.clientId),
     sourceId: Number(body.sourceId),
     productId: body.productId ? Number(body.productId) : undefined,
     allowedDomains: validateAllowedDomains(body.allowedDomains) || [],

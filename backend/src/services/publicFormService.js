@@ -9,10 +9,10 @@ const httpError = require("../utils/httpError");
 // documented in docs/API.md.
 const HONEYPOT_FIELD_NAME = "hp_company_website";
 
-// Only what a third-party page needs to render the form — no tenant id,
-// no internal source/product ids, nothing beyond field metadata.
+// Only what a third-party page needs to render the form — no tenant/client
+// id, no internal source/product ids, nothing beyond field metadata.
 async function getPublicConfig(form) {
-  const customFields = await customFieldModel.list(form.tenant_id, { includeInactive: false });
+  const customFields = await customFieldModel.list(form.client_id, { includeInactive: false });
   return {
     formName: form.name,
     fields: [
@@ -51,14 +51,14 @@ async function submitPublicLead(form, rawBody) {
     email: typeof rawBody?.email === "string" ? rawBody.email : undefined,
     customFields: rawBody?.customFields,
     // Always the form's own configuration — never read from rawBody, so a
-    // public caller cannot claim a different source/product than the one
-    // this formKey was actually set up with.
+    // public caller cannot claim a different source/product/client than
+    // the one this formKey was actually set up with.
     sourceId: form.source_id,
     productId: form.product_id ?? undefined,
   };
 
   const actor = { userId: null, role: "public_form" };
-  const lead = await leadService.createLead(form.tenant_id, actor, body);
+  const lead = await leadService.createLead(form.client_id, actor, body);
   return { honeypotTriggered: false, lead };
 }
 

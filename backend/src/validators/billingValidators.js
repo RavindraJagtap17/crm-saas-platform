@@ -6,6 +6,16 @@ const { isNonEmptyString, isPositiveInt, isPlainObject } = require("./primitives
 // Razorpay's side), not a freely invented string.
 const BILLING_CYCLES = ["daily", "weekly", "monthly", "yearly"];
 
+// B2B2C restructure: maxClients is the plan-derived limit an agency's
+// client count is checked against (Business Decision: NULL means
+// unlimited, never a sentinel integer) — omitted/null is valid and means
+// exactly that, not "unset".
+function validateMaxClients(value) {
+  if (value === undefined || value === null) return null;
+  if (!isPositiveInt(value)) throw httpError("maxClients must be a positive integer, or null/omitted for unlimited.", 400);
+  return Number(value);
+}
+
 function validateCreatePlan(body) {
   if (!isNonEmptyString(body?.name, 255)) throw httpError("name is required.", 400);
   if (!isPositiveInt(body?.price)) throw httpError("price is required and must be a positive integer (smallest currency unit, e.g. paise).", 400);
@@ -21,6 +31,7 @@ function validateCreatePlan(body) {
     billingCycle: body.billingCycle,
     features: body.features ?? null,
     razorpayPlanId: body.razorpayPlanId.trim(),
+    maxClients: validateMaxClients(body.maxClients),
   };
 }
 
@@ -32,6 +43,10 @@ function validateUpdatePlan(body) {
     throw httpError(`billingCycle must be one of: ${BILLING_CYCLES.join(", ")}.`, 400);
   }
   if (body.features !== undefined && body.features !== null && !isPlainObject(body.features)) throw httpError("features must be an object.", 400);
+  const maxClientsProvided = Object.prototype.hasOwnProperty.call(body || {}, "maxClients");
+  if (maxClientsProvided && body.maxClients !== null && !isPositiveInt(body.maxClients)) {
+    throw httpError("maxClients must be a positive integer, or null for unlimited.", 400);
+  }
   // razorpayPlanId is deliberately not editable here — see subscriptionPlanModel.update's comment.
   return {
     name: body.name?.trim(),
@@ -39,6 +54,14 @@ function validateUpdatePlan(body) {
     currency: body.currency,
     billingCycle: body.billingCycle,
     features: body.features,
+    // NOT_PROVIDED (a distinct sentinel, not `undefined`) = leave
+    // untouched; `null` = explicitly set to unlimited; a number = set to
+    // that limit. subscriptionPlanModel.update needs all three states,
+    // which a plain COALESCE(?, existing) can't distinguish (it treats
+    // both "omitted" and "explicit null" as "leave alone") — see the
+    // model for how it branches on this instead.
+    maxClients: maxClientsProvided ? (body.maxClients === null ? null : Number(body.maxClients)) : undefined,
+    maxClientsProvided,
   };
 }
 

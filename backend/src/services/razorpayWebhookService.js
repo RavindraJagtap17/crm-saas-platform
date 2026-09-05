@@ -3,8 +3,13 @@ const subscriptionPlanModel = require("../models/subscriptionPlanModel");
 const paymentModel = require("../models/paymentModel");
 const tenantModel = require("../models/tenantModel");
 const razorpayWebhookEventModel = require("../models/razorpayWebhookEventModel");
+const agencySubscriptionModel = require("../models/agencySubscriptionModel");
 const withTransaction = require("../utils/withTransaction");
 const logger = require("../utils/logger");
+
+// New business model — Agency grace period is always 7 days (Agency
+// billing is always yearly; there is no monthly Agency cycle).
+const AGENCY_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Every Razorpay subscription status this app tracks maps to exactly one
 // of these tenant-facing gate values (§G/§H) — the webhook is the ONLY
@@ -64,6 +69,87 @@ async function reconcileSubscriptionEntity(conn, entity) {
   await tenantModel.updateStatus(existing.tenant_id, mappedTenantStatus, conn);
 
   return { outcome: "reconciled", tenantId: existing.tenant_id, subscriptionId: existing.id, subscriptionStatus: entity.status, tenantStatus: mappedTenantStatus };
+}
+
+// 'grace_period' maps to tenants.status='active' deliberately — the new
+// business rule requires the Agency to stay fully usable during its grace
+// period ("During grace period Agency remains usable"), so the column
+// requireActiveTenant actually gates on is left unchanged from 'active'.
+// Grace-period EXPIRY is enforced separately and lazily by
+// requireActiveTenant re-checking agency_subscriptions.grace_period_ends_at
+// on every request (no scheduler exists in this codebase to proactively
+// flip it) — see that file's own comment.
+function tenantStatusForAgencySubscription(localStatus) {
+  if (localStatus === "active" || localStatus === "grace_period") return "active";
+  if (localStatus === "cancelled") return "canceled";
+  if (localStatus === "expired") return "suspended";
+  return "pending_payment";
+}
+
+/**
+ * New-business-model counterpart to reconcileSubscriptionEntity above,
+ * used ONLY when the incoming event's subscription id has no match in the
+ * OLD subscriptions table (see dispatch() below for the routing) — i.e.
+ * it belongs to a self-service-signup Agency created under the new flow
+ * (billingService.initiateAgencySubscription). reconcileSubscriptionEntity
+ * itself is never called or modified by this path.
+ *
+ * Maps Razorpay's raw status vocabulary onto the new 5-value local one
+ * (agency_subscriptions.status), with an explicit local grace-period timer
+ * Razorpay itself has no concept of: entering 'pending'/'halted' starts a
+ * fixed 7-day local countdown ONLY the first time (a repeat ping while
+ * already in grace_period does not reset the deadline); 'active' clears
+ * it. 'cancelled' is split into 'cancelled' (this agency's own auto_renew
+ * was already false — i.e. WE requested the cycle-end cancellation that
+ * just took effect) vs 'expired' (auto_renew was still true — an
+ * unrequested/involuntary lapse), matching migration 042's status vocabulary.
+ */
+async function reconcileAgencySubscriptionEntity(conn, entity) {
+  const existing = await agencySubscriptionModel.findByRazorpaySubscriptionId(entity.id, conn);
+  if (!existing) {
+    logger.warn(`Razorpay webhook: no local subscription (old or new) for razorpay_subscription_id=${entity.id}`);
+    return { outcome: "unknown_subscription", tenantId: null };
+  }
+
+  let localStatus;
+  let gracePeriodEndsAt = existing.grace_period_ends_at;
+
+  if (entity.status === "active") {
+    localStatus = "active";
+    gracePeriodEndsAt = null;
+  } else if (entity.status === "pending" || entity.status === "halted") {
+    localStatus = "grace_period";
+    if (existing.status !== "grace_period") {
+      gracePeriodEndsAt = new Date(Date.now() + AGENCY_GRACE_PERIOD_MS);
+    }
+  } else if (entity.status === "cancelled") {
+    localStatus = existing.auto_renew ? "expired" : "cancelled";
+    gracePeriodEndsAt = null;
+  } else if (entity.status === "completed" || entity.status === "expired") {
+    localStatus = "expired";
+    gracePeriodEndsAt = null;
+  } else {
+    // created / authenticated — not yet paid.
+    localStatus = "pending";
+  }
+
+  await agencySubscriptionModel.applyWebhookState(conn, entity.id, {
+    status: localStatus,
+    currentPeriodEnd: toMysqlDatetime(entity.current_end),
+    gracePeriodEndsAt,
+    razorpayCustomerId: entity.customer_id || undefined,
+  });
+
+  const mappedTenantStatus = tenantStatusForAgencySubscription(localStatus);
+  await tenantModel.updateStatus(existing.tenant_id, mappedTenantStatus, conn);
+
+  return {
+    outcome: "reconciled",
+    tenantId: existing.tenant_id,
+    subscriptionId: existing.id,
+    subscriptionStatus: localStatus,
+    tenantStatus: mappedTenantStatus,
+  };
 }
 
 /**
@@ -131,8 +217,25 @@ async function dispatch(conn, eventType, payload) {
     const entity = payload?.subscription?.entity;
     if (!entity?.id) return { outcome: "malformed_event", tenantId: null };
 
-    const result = await reconcileSubscriptionEntity(conn, entity);
-    if (eventType === "subscription.charged" && payload?.payment?.entity && result.subscriptionId) {
+    // Routing, not modification: an extra indexed lookup decides which of
+    // the two independent tables owns this subscription id before doing
+    // anything else. When a match IS found in the OLD table, the exact
+    // same reconcileSubscriptionEntity() call that always ran here
+    // executes, completely unchanged — zero behavior difference for any
+    // existing/old-flow tenant. Only when NOTHING matches in the OLD
+    // table does the new agency_subscriptions path run instead.
+    const isOldFlowSubscription = await subscriptionModel.findByRazorpaySubscriptionId(entity.id, conn);
+    const result = isOldFlowSubscription
+      ? await reconcileSubscriptionEntity(conn, entity)
+      : await reconcileAgencySubscriptionEntity(conn, entity);
+
+    // Payment-ledger recording stays scoped to the OLD flow only — there is
+    // no client_payments-equivalent agency ledger table for the new flow
+    // yet (deliberately out of this step's scope; see the implementation
+    // report). New-flow payments are still fully reflected in
+    // agency_subscriptions.status via reconcileAgencySubscriptionEntity
+    // above, just not in a separate ledger table.
+    if (isOldFlowSubscription && eventType === "subscription.charged" && payload?.payment?.entity && result.subscriptionId) {
       await recordChargedPayment(conn, result.tenantId, result.subscriptionId, payload.payment.entity);
     }
     return result;

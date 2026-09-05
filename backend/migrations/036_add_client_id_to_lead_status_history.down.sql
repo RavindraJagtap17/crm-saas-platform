@@ -1,0 +1,10 @@
+ALTER TABLE lead_status_history DROP FOREIGN KEY fk_lsh_lead_client;
+ALTER TABLE lead_status_history DROP FOREIGN KEY fk_lsh_changed_by_client;
+ALTER TABLE lead_status_history DROP FOREIGN KEY fk_lsh_from_status_client;
+ALTER TABLE lead_status_history DROP FOREIGN KEY fk_lsh_to_status_client;
+ALTER TABLE lead_status_history DROP FOREIGN KEY fk_lsh_client;
+ALTER TABLE lead_status_history DROP KEY idx_lsh_client_lead;
+ALTER TABLE lead_status_history DROP KEY idx_lsh_client_changed_by;
+ALTER TABLE lead_status_history DROP KEY idx_lsh_client_from_status;
+ALTER TABLE lead_status_history DROP KEY idx_lsh_client_to_status;
+ALTER TABLE lead_status_history DROP COLUMN client_id;

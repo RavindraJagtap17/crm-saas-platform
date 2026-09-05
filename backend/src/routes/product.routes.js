@@ -8,10 +8,10 @@ const controller = require("../controllers/product.controller");
 
 const router = express.Router();
 
-router.use(authenticate, tenantScope, requireActiveTenant, requireRole("tenant_admin", "tenant_employee"));
+router.use(authenticate, tenantScope, requireActiveTenant, requireRole("client_admin", "client_employee"));
 
 router.get("/", controller.list);
-router.post("/", requireRole("tenant_admin"), controller.create);
-router.patch("/:id", validateIdParam(), requireRole("tenant_admin"), controller.update);
+router.post("/", requireRole("client_admin"), controller.create);
+router.patch("/:id", validateIdParam(), requireRole("client_admin"), controller.update);
 
 module.exports = router;

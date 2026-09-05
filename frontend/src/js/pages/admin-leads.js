@@ -221,16 +221,17 @@ function openCreateLeadModal() {
 }
 
 async function main() {
-  const user = await requireRole("tenant_admin");
+  const user = await requireRole("client_admin");
   if (!user) return;
-  await applyTenantBranding();
   const content = mountShell({ activeKey: "leads", title: "Leads" });
+  if (!content) return;
+  await applyTenantBranding();
 
   content.innerHTML = `
     <div class="page-header">
       <div>
         <h2 class="page-title">Leads</h2>
-        <p class="page-subtitle">All leads across your tenant.</p>
+        <p class="page-subtitle">All leads for your client.</p>
       </div>
       <button class="btn btn-primary" id="new-lead-btn">+ New Lead</button>
     </div>

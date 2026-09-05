@@ -1,6 +1,7 @@
 const superAdminService = require("../services/superAdminService");
 const subscriptionPlanService = require("../services/subscriptionPlanService");
 const billingService = require("../services/billingService");
+const agencySubscriptionPlanService = require("../services/agencySubscriptionPlanService");
 const asyncHandler = require("../utils/asyncHandler");
 
 const listTenants = asyncHandler(async (req, res) => {
@@ -11,9 +12,14 @@ const getTenant = asyncHandler(async (req, res) => {
   res.json(await superAdminService.getTenant(req.params.id));
 });
 
-const updateEmployeeLimit = asyncHandler(async (req, res) => {
-  const tenant = await superAdminService.updateEmployeeLimit(req.params.id, req.body, req.user.sub);
-  res.json({ tenant });
+const createAgency = asyncHandler(async (req, res) => {
+  const tenant = await superAdminService.createAgency(req.body, req.user.sub);
+  res.status(201).json({ tenant });
+});
+
+const inviteAgencyAdmin = asyncHandler(async (req, res) => {
+  const user = await superAdminService.inviteAgencyAdmin(req.params.id, req.body, req.user.sub);
+  res.status(201).json({ user });
 });
 
 const updateStatus = asyncHandler(async (req, res) => {
@@ -72,10 +78,36 @@ const cancelTenantSubscription = asyncHandler(async (req, res) => {
   res.json({ tenant: await billingService.cancel(req.params.id, { userId: req.user.sub }) });
 });
 
+// ---- New business model: the ONE Agency plan (agency_subscription_plan,
+// migration 041) — Super Admin sets/updates its price. Separate from the
+// Step 9 multi-plan catalog above (/plans), left untouched. ----
+
+const getAgencyPlan = asyncHandler(async (req, res) => {
+  res.json({ plan: await agencySubscriptionPlanService.get() });
+});
+
+const upsertAgencyPlan = asyncHandler(async (req, res) => {
+  const plan = await agencySubscriptionPlanService.upsert(req.body, req.user.sub);
+  res.json({ plan });
+});
+
+// Read-only: one Agency's real current subscription under the new model —
+// reuses billingService.getAgencySubscriptionForTenant exactly as the §K
+// old-flow override above reuses billingService.getSubscriptionForTenant,
+// just against the new table. No write actions here: the finalized
+// business model gives Super Admin no manual suspend/resume/change-plan
+// control over the new single-plan Agency subscription (unlike the old
+// catalog's §K override) — recovery/cancellation is Agency-Admin
+// self-service, and expiry is webhook/grace-period driven.
+const getTenantAgencySubscription = asyncHandler(async (req, res) => {
+  res.json(await billingService.getAgencySubscriptionForTenant(req.params.id));
+});
+
 module.exports = {
   listTenants,
   getTenant,
-  updateEmployeeLimit,
+  createAgency,
+  inviteAgencyAdmin,
   updateStatus,
   overview,
   listPlans,
@@ -87,4 +119,7 @@ module.exports = {
   suspendTenantSubscription,
   resumeTenantSubscription,
   cancelTenantSubscription,
+  getAgencyPlan,
+  upsertAgencyPlan,
+  getTenantAgencySubscription,
 };

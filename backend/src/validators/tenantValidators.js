@@ -26,12 +26,15 @@ function validateStatus(body) {
   return body.status;
 }
 
-function validateEmployeeLimit(body) {
-  const limit = Number(body?.employeeLimit);
-  if (!Number.isInteger(limit) || limit < 0) {
-    throw httpError("employeeLimit must be a non-negative integer.", 400);
+// B2B2C restructure: agencies are now created by a Super Admin
+// (superAdminService.createAgency) rather than via self-service signup —
+// this is that flow's input validation. Just a name; status/slug are
+// server-computed, same as the old signup path.
+function validateCreateAgency(body) {
+  if (!isNonEmptyString(body?.name, 255)) {
+    throw httpError("name is required.", 400);
   }
-  return limit;
+  return { name: body.name.trim() };
 }
 
-module.exports = { validateUpdateBranding, validateStatus, validateEmployeeLimit };
+module.exports = { validateUpdateBranding, validateStatus, validateCreateAgency };

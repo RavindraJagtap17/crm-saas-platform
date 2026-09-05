@@ -6,14 +6,16 @@ import { toastSuccess, toastError } from "../components/toast.js";
 import { escapeHtml, setButtonLoading } from "../components/ui.js";
 
 async function main() {
-  const user = await requireRole("tenant_admin");
+  const user = await requireRole("agency_admin");
   if (!user) return;
-  const tenant = await applyTenantBranding();
+  // mountShell() first — see agency-clients.js's comment on this ordering.
   const content = mountShell({ activeKey: "branding", title: "Branding" });
+  if (!content) return;
+  const tenant = await applyTenantBranding();
 
   content.innerHTML = `
     <div class="page-header">
-      <div><h2 class="page-title">Branding</h2><p class="page-subtitle">How your workspace looks to your team — name, logo, and brand color.</p></div>
+      <div><h2 class="page-title">Branding</h2><p class="page-subtitle">How your agency looks across every client workspace — name, logo, and brand color.</p></div>
     </div>
     <div class="card" style="max-width:560px">
       <div class="card-body">
@@ -33,7 +35,7 @@ async function main() {
               <input class="input" type="color" id="b-color" value="${tenant?.brandPrimaryColor || "#4f46e5"}" style="height:40px;width:64px;padding:4px" />
               <span class="text-sm text-secondary num" id="b-color-value">${tenant?.brandPrimaryColor || "#4f46e5"}</span>
             </div>
-            <span class="hint">Used for buttons, links, and highlights throughout your workspace.</span>
+            <span class="hint">Used for buttons, links, and highlights throughout your agency's and every client's workspace.</span>
           </div>
           <div class="field-error" id="b-error" hidden></div>
         </form>

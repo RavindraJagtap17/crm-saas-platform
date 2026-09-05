@@ -1,5 +1,6 @@
 const billingService = require("../services/billingService");
 const subscriptionPlanService = require("../services/subscriptionPlanService");
+const agencySubscriptionPlanService = require("../services/agencySubscriptionPlanService");
 const userModel = require("../models/userModel");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -35,4 +36,36 @@ const changePlan = asyncHandler(async (req, res) => {
   res.json(await billingService.changePlan(req.tenantId, req.body));
 });
 
-module.exports = { listPlans, getSubscription, listPayments, subscribe, changePlan };
+// ---- New business model: single-plan self-service Agency subscription ----
+
+// GET /api/billing/agency-plan — PUBLIC (see billing.routes.js), so the
+// self-service signup page can show a price before an account exists.
+const getAgencyPlanPublic = asyncHandler(async (req, res) => {
+  res.json({ plan: await agencySubscriptionPlanService.getPublic() });
+});
+
+const initiateAgencySubscription = asyncHandler(async (req, res) => {
+  const actorUser = await userModel.findById(req.user.sub);
+  const result = await billingService.initiateAgencySubscription(req.tenantId, actorUser);
+  res.status(201).json(result);
+});
+
+const getAgencySubscription = asyncHandler(async (req, res) => {
+  res.json(await billingService.getAgencySubscriptionForTenant(req.tenantId));
+});
+
+const cancelAgencySubscription = asyncHandler(async (req, res) => {
+  res.json({ subscription: await billingService.cancelAgencySubscription(req.tenantId) });
+});
+
+module.exports = {
+  listPlans,
+  getSubscription,
+  listPayments,
+  subscribe,
+  changePlan,
+  getAgencyPlanPublic,
+  initiateAgencySubscription,
+  getAgencySubscription,
+  cancelAgencySubscription,
+};

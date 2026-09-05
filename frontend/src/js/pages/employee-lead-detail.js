@@ -30,7 +30,7 @@ async function loadRefData() {
 
 function renderShell(content) {
   content.innerHTML = `
-    <a href="./leads.html" class="text-sm">← Back to my leads</a>
+    <a href="./leads.html" class="text-sm">← Back to leads</a>
     <div class="page-header mt-2">
       <div>
         <h2 class="page-title" id="lead-name">Loading…</h2>
@@ -238,10 +238,11 @@ function wireActions() {
 }
 
 async function main() {
-  const user = await requireRole("tenant_employee");
+  const user = await requireRole("client_employee");
   if (!user) return;
-  await applyTenantBranding();
   const content = mountShell({ activeKey: "leads", title: "Lead" });
+  if (!content) return;
+  await applyTenantBranding();
 
   if (!leadId) {
     content.innerHTML = emptyState({ title: "No lead specified" });
@@ -257,7 +258,7 @@ async function main() {
     content.innerHTML = emptyState({
       icon: "⚠",
       title: "Couldn't load this lead",
-      desc: err.status === 404 ? "This lead doesn't exist or isn't assigned to you." : err.message,
+      desc: err.status === 404 ? "This lead doesn't exist." : err.message,
     });
   }
 }

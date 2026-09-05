@@ -101,6 +101,63 @@ const config = {
     keySecret: process.env.RAZORPAY_KEY_SECRET,
     webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
   },
+
+  // Agency Razorpay Connect (Technology Partner OAuth) — a SEPARATE
+  // credential set from `razorpay` above, which stays the platform's own
+  // account used only for Agency subscription billing (untouched by this).
+  // Deliberately NOT added to REQUIRED at the top of this file: unlike
+  // Meta/the platform Razorpay keys (already-expected dependencies when
+  // their own steps were built), this is a brand-new, optional integration
+  // being added to an already-running app — requiring it at boot would
+  // break every other feature in any environment that hasn't registered a
+  // Razorpay Partner app yet. Its absence is instead checked at the point
+  // of use (agencyRazorpayConnectService.requirePartnerConfig), failing
+  // clearly only when the feature itself is actually invoked.
+  razorpayPartner: {
+    clientId: process.env.RAZORPAY_PARTNER_CLIENT_ID,
+    clientSecret: process.env.RAZORPAY_PARTNER_CLIENT_SECRET,
+    redirectUri:
+      process.env.RAZORPAY_PARTNER_REDIRECT_URI ||
+      `${process.env.APP_URL || "http://localhost:4000"}/api/agency-razorpay/oauth/callback`,
+    // Distinct from razorpay.webhookSecret — Razorpay documents
+    // application-level Partner webhooks (account.app.authorization_revoked)
+    // as configured independently per Partner app, with their own secret,
+    // separate from a merchant/subscription-level webhook. See
+    // razorpayPartnerWebhook.routes.js.
+    webhookSecret: process.env.RAZORPAY_PARTNER_WEBHOOK_SECRET,
+    // Step 8E: the URL registered on EACH connected Agency account's own
+    // Razorpay-side webhook (a per-account secret, distinct from both
+    // webhookSecret above and the platform's own razorpay.webhookSecret —
+    // see agencyRazorpayConnectService.js's provisioning comment). One
+    // shared URL for every connected account, differentiated by account_id
+    // + that account's own secret at verification time.
+    clientWebhookUrl:
+      process.env.RAZORPAY_CLIENT_WEBHOOK_URL ||
+      `${process.env.APP_URL || "http://localhost:4000"}/api/razorpay/client-webhook`,
+  },
+
+  // Step 9A — scheduler infrastructure only, no business jobs registered
+  // yet (see src/jobs/index.js). Deliberately NOT in REQUIRED above and
+  // defaults to disabled: there is nothing for it to run yet, so an
+  // environment that hasn't opted in should see no behavior change at
+  // all from this existing. tickIntervalMs is how often the scheduler
+  // polls registered jobs to see if they're due — not a cron string, see
+  // jobs/scheduler.js's header comment on the server-time/UTC convention.
+  scheduler: {
+    enabled: process.env.SCHEDULER_ENABLED === "true",
+    tickIntervalMs: parseInt(process.env.SCHEDULER_TICK_INTERVAL_MS, 10) || 60000,
+    // Step 9B — how often (ms) each of the 4 Client renewal/grace jobs is
+    // due to run (see jobs/clientRenewalJobs.js). Renewal/grace boundaries
+    // are day-level (calendar months/years, 3/7-day grace windows), so
+    // hourly polling is comfortably granular — a subscription becoming due
+    // is detected within, at most, one interval of its actual due moment.
+    clientRenewalJobIntervalMs: parseInt(process.env.CLIENT_RENEWAL_JOB_INTERVAL_MS, 10) || 3600000,
+    // Step 11B — how often (ms) the employee-invitation-expiry job runs
+    // (see jobs/employeeInvitationJobs.js). Invitations expire on a 7-day
+    // cycle (userService.js's INVITATION_EXPIRY_DAYS), so hourly polling
+    // is comfortably granular here too.
+    employeeInvitationExpiryJobIntervalMs: parseInt(process.env.EMPLOYEE_INVITATION_EXPIRY_JOB_INTERVAL_MS, 10) || 3600000,
+  },
 };
 
 module.exports = config;

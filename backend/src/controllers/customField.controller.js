@@ -1,18 +1,10 @@
 const customFieldService = require("../services/customFieldService");
 const asyncHandler = require("../utils/asyncHandler");
 
+// Read-only from here on — see customField.routes.js. Management (create/
+// update) moved to client.controller.js's Agency-Admin-scoped endpoints.
 const list = asyncHandler(async (req, res) => {
-  res.json({ customFields: await customFieldService.list(req.tenantId) });
+  res.json({ customFields: await customFieldService.list(req.clientId) });
 });
 
-const create = asyncHandler(async (req, res) => {
-  const customField = await customFieldService.create(req.tenantId, req.body);
-  res.status(201).json({ customField });
-});
-
-const update = asyncHandler(async (req, res) => {
-  const customField = await customFieldService.update(req.tenantId, req.params.id, req.body);
-  res.json({ customField });
-});
-
-module.exports = { list, create, update };
+module.exports = { list };

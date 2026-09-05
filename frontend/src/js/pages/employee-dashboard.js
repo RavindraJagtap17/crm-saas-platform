@@ -39,15 +39,16 @@ async function renderCallingList(container, statuses) {
 }
 
 async function main() {
-  const user = await requireRole("tenant_employee");
+  const user = await requireRole("client_employee");
   if (!user) return;
-  await applyTenantBranding();
   const content = mountShell({ activeKey: "dashboard", title: "Dashboard" });
+  if (!content) return;
+  await applyTenantBranding();
 
   content.innerHTML = `
     <div class="grid-stats mb-6" id="stats"></div>
     <div class="card">
-      <div class="card-header"><h2 class="card-title">Today's Calling List</h2><p class="card-subtitle">Your open leads, newest first.</p></div>
+      <div class="card-header"><h2 class="card-title">Today's Calling List</h2><p class="card-subtitle">Your client's open leads, newest first.</p></div>
       <div class="card-body" id="calling-list"></div>
     </div>
   `;

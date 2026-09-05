@@ -48,10 +48,10 @@ function hashPhone(phone) {
  * non-final status, and does nothing if this lead already has an event
  * (§H idempotency — see metaCapiEventModel.queueIfAbsent).
  */
-async function maybeQueueConversion(conn, tenantId, leadId, targetStatus) {
+async function maybeQueueConversion(conn, clientId, leadId, targetStatus) {
   if (!targetStatus?.is_final) return null;
-  const metaEventId = `crm_lead_${tenantId}_${leadId}`;
-  return metaCapiEventModel.queueIfAbsent(conn, tenantId, leadId, { eventName: EVENT_NAME, metaEventId });
+  const metaEventId = `crm_lead_${clientId}_${leadId}`;
+  return metaCapiEventModel.queueIfAbsent(conn, clientId, leadId, { eventName: EVENT_NAME, metaEventId });
 }
 
 // Schedules processing without making the caller (leadService) wait on a
@@ -94,21 +94,21 @@ async function processEvent(eventId) {
     metaCapiEventModel.markPermanentFailure(eventId, { retryCount: event.retry_count, lastError, metaResponseCode });
 
   // §E/§I.1/§I.2/§I.3: no connection, no pixel configured, or an expired
-  // token are all things only a Tenant Admin action (reconnect Meta,
+  // token are all things only a Client Admin action (reconnect Meta,
   // enter a Pixel ID) can fix — retrying automatically won't help, so
   // these fail permanently and safely rather than looping forever.
-  const settings = await metaIntegrationModel.findByTenant(event.tenant_id);
+  const settings = await metaIntegrationModel.findByClient(event.client_id);
   if (!settings) {
-    return failPermanently("Tenant has no Meta integration connected.", "NOT_CONNECTED");
+    return failPermanently("Client has no Meta integration connected.", "NOT_CONNECTED");
   }
   if (!settings.pixel_id) {
-    return failPermanently("No Meta Pixel/Dataset configured for this tenant.", "NO_PIXEL");
+    return failPermanently("No Meta Pixel/Dataset configured for this client.", "NO_PIXEL");
   }
   if (metaIntegrationService.isTokenExpired(settings)) {
     return failPermanently("Meta connection has expired or been revoked. Reconnect to resume sending conversions.", "TOKEN_EXPIRED");
   }
 
-  const lead = await leadModel.findById(event.tenant_id, event.lead_id);
+  const lead = await leadModel.findById(event.client_id, event.lead_id);
   if (!lead) {
     // Lead was deleted after the event was queued (the FK is CASCADE, so
     // in practice this row would already be gone too — defensive only).
@@ -132,7 +132,7 @@ async function processEvent(eventId) {
     user_data: userData,
   };
 
-  const { accessToken } = await metaIntegrationService.getDecryptedAccessToken(event.tenant_id);
+  const { accessToken } = await metaIntegrationService.getDecryptedAccessToken(event.client_id);
   const result = await graphClient.sendCapiEvent(settings.pixel_id, accessToken, payload);
 
   if (result.ok) {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Create your agency · CRM</title>
+  <title>Start your agency · CRM</title>
   <link rel="stylesheet" href="../../src/css/tokens.css" />
   <link rel="stylesheet" href="../../src/css/base.css" />
   <link rel="stylesheet" href="../../src/css/components.css" />
@@ -15,22 +15,27 @@
     <div class="auth-card">
       <div class="auth-brand">
         <div class="auth-mark" aria-hidden="true">C</div>
-        <h1 class="auth-title">Create your agency</h1>
-        <p class="auth-subtitle">Set up a new workspace — you'll be its first Admin</p>
+        <h1 class="auth-title">Start your agency</h1>
+        <p class="auth-subtitle">Sign up with Google to create your agency and become its Agency Admin</p>
       </div>
 
       <div class="card card-pad">
         <div id="alert-slot"></div>
-        <form id="signup-form" novalidate>
-          <div class="field" id="agency-field">
-            <label class="label" for="agencyName">Agency name</label>
-            <input class="input" id="agencyName" name="agencyName" placeholder="Acme Leads Co." autocomplete="organization" required />
-            <div class="field-error" hidden></div>
-          </div>
-          <div class="auth-divider">then sign in with Google to finish</div>
-          <div class="gsi-slot" id="gsi-button"></div>
-        </form>
+        <div class="field">
+          <label class="label" for="su-agency-name">Agency name</label>
+          <input class="input" id="su-agency-name" placeholder="Acme Marketing Agency" />
+          <div class="field-error" id="su-name-error" hidden></div>
+        </div>
+        <div class="gsi-slot" id="gsi-button"></div>
+        <div id="gsi-fallback-note" class="hint" style="text-align:center;margin-top:var(--space-3);display:none">
+          Google Sign-In isn't configured for this environment yet (no <code>GOOGLE_CLIENT_ID</code> set).
+        </div>
+        <p class="hint" style="text-align:center;margin-top:var(--space-3)">
+          You'll set up payment for your agency's subscription right after this.
+        </p>
       </div>
+
+      <div id="dev-note-slot"></div>
 
       <p class="auth-footer">
         Already have an account? <a href="./index.html">Sign in</a>

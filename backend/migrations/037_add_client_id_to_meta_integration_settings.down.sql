@@ -1,0 +1,3 @@
+ALTER TABLE meta_integration_settings DROP FOREIGN KEY fk_meta_integration_client;
+ALTER TABLE meta_integration_settings DROP KEY uq_meta_integration_client;
+ALTER TABLE meta_integration_settings DROP COLUMN client_id;

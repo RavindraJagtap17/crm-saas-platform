@@ -1,8 +1,13 @@
 const pool = require("../config/db");
 const { slugify } = require("../utils/slugify");
 
+// employee_limit deliberately excluded: it has no business meaning under
+// the B2B2C model (client count is the plan-derived limit; employees are
+// unlimited — see clientModel/subscriptionPlanModel). The column itself is
+// left in place per the approved migration-safety instructions — dropping
+// it is an explicit later cleanup step, not part of this refactor.
 const PUBLIC_COLUMNS = `
-  id, name, slug, status, employee_limit, logo_url, brand_primary_color,
+  id, name, slug, status, logo_url, brand_primary_color,
   theme_settings, subdomain, custom_domain, created_at, updated_at
 `;
 
@@ -64,12 +69,6 @@ async function listAll() {
   return rows;
 }
 
-async function updateEmployeeLimit(id, employeeLimit) {
-  const [result] = await pool.query(`UPDATE tenants SET employee_limit = ? WHERE id = ?`, [employeeLimit, id]);
-  if (result.affectedRows === 0) return null;
-  return findById(id);
-}
-
 // conn is optional and trailing (not the leading-conn convention used
 // elsewhere) specifically so the existing superAdminService.js call site
 // (updateStatus(id, status), no transaction involved) needs no change —
@@ -87,13 +86,19 @@ async function updateStatus(id, status, conn) {
   return conn ? true : findById(id);
 }
 
+// totalUsers counts every real account regardless of which scope column
+// it carries (agency_admin: tenant_id set; client_admin/employee:
+// client_id set; super_admin: neither) — `WHERE tenant_id IS NOT NULL`
+// would now silently undercount by excluding every client-level user.
 async function platformCounts() {
   const [[{ totalTenants }]] = await pool.query(`SELECT COUNT(*) AS totalTenants FROM tenants`);
   const [byStatusRows] = await pool.query(`SELECT status, COUNT(*) AS count FROM tenants GROUP BY status`);
-  const [[{ totalUsers }]] = await pool.query(`SELECT COUNT(*) AS totalUsers FROM users WHERE tenant_id IS NOT NULL`);
+  const [[{ totalClients }]] = await pool.query(`SELECT COUNT(*) AS totalClients FROM clients`);
+  const [[{ totalUsers }]] = await pool.query(`SELECT COUNT(*) AS totalUsers FROM users`);
   const [[{ totalLeads }]] = await pool.query(`SELECT COUNT(*) AS totalLeads FROM leads`);
   return {
     totalTenants,
+    totalClients,
     totalUsers,
     totalLeads,
     tenantsByStatus: Object.fromEntries(byStatusRows.map((r) => [r.status, r.count])),
@@ -106,7 +111,6 @@ module.exports = {
   findById,
   updateBranding,
   listAll,
-  updateEmployeeLimit,
   updateStatus,
   platformCounts,
 };

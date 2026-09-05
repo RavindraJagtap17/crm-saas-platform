@@ -46,7 +46,7 @@ async function refreshList() {
       columns: columns(),
       rows: items,
       onRowClick: (row) => (window.location.href = `./lead-detail.html?id=${row.id}`),
-      empty: { icon: "☍", title: "No leads assigned to you yet" },
+      empty: { icon: "☍", title: "No leads match these filters", desc: "Try clearing a filter — this list shows every lead for your client." },
     });
     pagerEl.innerHTML = paginationHtml(pagination);
     pagerEl.querySelector('[data-page="prev"]')?.addEventListener("click", () => { state.page -= 1; refreshList(); });
@@ -110,14 +110,15 @@ function openCreateLeadModal() {
 }
 
 async function main() {
-  const user = await requireRole("tenant_employee");
+  const user = await requireRole("client_employee");
   if (!user) return;
+  const content = mountShell({ activeKey: "leads", title: "Leads" });
+  if (!content) return;
   await applyTenantBranding();
-  const content = mountShell({ activeKey: "leads", title: "My Leads" });
 
   content.innerHTML = `
     <div class="page-header">
-      <div><h2 class="page-title">My Leads</h2><p class="page-subtitle">Leads assigned to you.</p></div>
+      <div><h2 class="page-title">Leads</h2><p class="page-subtitle">All leads for your client.</p></div>
       <button class="btn btn-primary" id="new-lead-btn">+ New Lead</button>
     </div>
     <div class="card mb-4" id="filter-bar"></div>

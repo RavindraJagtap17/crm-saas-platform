@@ -1,0 +1,9 @@
+ALTER TABLE tenant_razorpay_accounts DROP COLUMN webhook_secret_encrypted;
+
+ALTER TABLE client_subscriptions DROP FOREIGN KEY fk_client_subscriptions_tenant_next_plan;
+ALTER TABLE client_subscriptions DROP KEY uq_client_subscriptions_pending_razorpay_order_id;
+ALTER TABLE client_subscriptions DROP KEY idx_client_subscriptions_tenant_next_plan;
+ALTER TABLE client_subscriptions DROP COLUMN current_period_start;
+ALTER TABLE client_subscriptions DROP COLUMN current_price;
+ALTER TABLE client_subscriptions DROP COLUMN next_plan_id;
+ALTER TABLE client_subscriptions DROP COLUMN pending_razorpay_order_id;

@@ -14,8 +14,9 @@ router.use(authenticate, tenantScope, requireRole("super_admin"));
 
 router.get("/overview", controller.overview);
 router.get("/tenants", controller.listTenants);
+router.post("/tenants", controller.createAgency);
 router.get("/tenants/:id", validateIdParam(), controller.getTenant);
-router.patch("/tenants/:id/employee-limit", validateIdParam(), controller.updateEmployeeLimit);
+router.post("/tenants/:id/invite-admin", validateIdParam(), controller.inviteAgencyAdmin);
 router.patch("/tenants/:id/status", validateIdParam(), controller.updateStatus);
 
 // Step 9: local plan catalog (§B/§P) — never touches Razorpay itself,
@@ -24,6 +25,14 @@ router.get("/plans", controller.listPlans);
 router.post("/plans", controller.createPlan);
 router.patch("/plans/:id", validateIdParam(), controller.updatePlan);
 router.patch("/plans/:id/active", validateIdParam(), controller.setPlanActive);
+
+// New business model: exactly ONE Agency plan — Super Admin sets/updates
+// its price. Never touches Razorpay itself, same as the Step 9 catalog
+// above; separate route/table (agency_subscription_plan, migration 041),
+// left independent of the Step 9 multi-plan catalog.
+router.get("/agency-plan", controller.getAgencyPlan);
+router.put("/agency-plan", controller.upsertAgencyPlan);
+router.get("/tenants/:id/agency-subscription", validateIdParam(), controller.getTenantAgencySubscription);
 
 // Step 9: any-tenant subscription override (§K).
 router.get("/tenants/:id/subscription", validateIdParam(), controller.getTenantSubscription);

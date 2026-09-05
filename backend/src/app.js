@@ -30,7 +30,14 @@ app.use(helmet());
 // excluded too: neither Meta's nor Razorpay's servers involve a browser/
 // Origin at all, so our own CORS policy is simply irrelevant to them.
 app.use((req, res, next) => {
-  if (req.path.startsWith("/api/public/") || req.path === "/api/meta/webhook" || req.path === "/api/razorpay/webhook") return next();
+  if (
+    req.path.startsWith("/api/public/") ||
+    req.path === "/api/meta/webhook" ||
+    req.path === "/api/razorpay/webhook" ||
+    req.path === "/api/razorpay/oauth-webhook" ||
+    req.path === "/api/razorpay/client-webhook"
+  )
+    return next();
   return cors({
     origin: config.corsAllowedOrigins.length > 0 ? config.corsAllowedOrigins : false,
     // Refresh tokens travel as an httpOnly cookie, which requires the
@@ -52,7 +59,14 @@ app.use((req, res, next) => {
 // cases — that capture would never run if this global parser consumed
 // the body first.
 app.use((req, res, next) => {
-  if (req.path.startsWith("/api/public/") || req.path === "/api/meta/webhook" || req.path === "/api/razorpay/webhook") return next();
+  if (
+    req.path.startsWith("/api/public/") ||
+    req.path === "/api/meta/webhook" ||
+    req.path === "/api/razorpay/webhook" ||
+    req.path === "/api/razorpay/oauth-webhook" ||
+    req.path === "/api/razorpay/client-webhook"
+  )
+    return next();
   return express.json()(req, res, next);
 });
 app.use(cookieParser());

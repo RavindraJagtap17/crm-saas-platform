@@ -375,7 +375,7 @@ async function renderCapiCard(cardEl) {
     cardEl.innerHTML = `<div class="card-body">${emptyState({
       icon: "⇪",
       title: "No conversions sent yet",
-      desc: "When a lead reaches your tenant's configured final status, a Meta Conversions API event is sent automatically and will show up here.",
+      desc: "When a lead reaches your client's configured final status, a Meta Conversions API event is sent automatically and will show up here.",
     })}</div>`;
     return;
   }
@@ -404,10 +404,11 @@ async function renderCapiCard(cardEl) {
 }
 
 async function main() {
-  const user = await requireRole("tenant_admin");
+  const user = await requireRole("client_admin");
   if (!user) return;
-  await applyTenantBranding();
   const content = mountShell({ activeKey: "meta-integration", title: "Meta Lead Ads" });
+  if (!content) return;
+  await applyTenantBranding();
 
   content.innerHTML = `
     <div class="page-header">

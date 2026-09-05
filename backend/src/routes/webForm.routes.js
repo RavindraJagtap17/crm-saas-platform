@@ -8,12 +8,15 @@ const controller = require("../controllers/webForm.controller");
 
 const router = express.Router();
 
-// Tenant Admin only — matches every other tenant-configuration resource
-// (statuses, sources, products, custom fields).
-router.use(authenticate, tenantScope, requireActiveTenant, requireRole("tenant_admin"));
+// Agency Admin only — Website Forms are managed at the agency level, each
+// one targeting exactly one of the agency's own clients (Category C,
+// dual-scoped: tenant_id for authorization, client_id for the CRM data it
+// feeds into).
+router.use(authenticate, tenantScope, requireActiveTenant, requireRole("agency_admin"));
 
 router.get("/", controller.list);
 router.post("/", controller.create);
 router.patch("/:id", validateIdParam(), controller.update);
+router.get("/clients/:clientId/custom-fields", validateIdParam("clientId"), controller.listClientCustomFields);
 
 module.exports = router;

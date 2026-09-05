@@ -84,10 +84,11 @@ function openForm(listEl, source) {
 }
 
 async function main() {
-  const user = await requireRole("tenant_admin");
+  const user = await requireRole("client_admin");
   if (!user) return;
-  await applyTenantBranding();
   const content = mountShell({ activeKey: "sources", title: "Lead Sources" });
+  if (!content) return;
+  await applyTenantBranding();
   content.innerHTML = `
     <div class="page-header">
       <div><h2 class="page-title">Lead Sources</h2><p class="page-subtitle">Where your leads come from.</p></div>

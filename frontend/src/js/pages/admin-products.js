@@ -92,10 +92,11 @@ function openForm(listEl, product) {
 }
 
 async function main() {
-  const user = await requireRole("tenant_admin");
+  const user = await requireRole("client_admin");
   if (!user) return;
-  await applyTenantBranding();
   const content = mountShell({ activeKey: "products", title: "Products" });
+  if (!content) return;
+  await applyTenantBranding();
   content.innerHTML = `
     <div class="page-header">
       <div><h2 class="page-title">Products</h2><p class="page-subtitle">Services leads can be tagged against.</p></div>

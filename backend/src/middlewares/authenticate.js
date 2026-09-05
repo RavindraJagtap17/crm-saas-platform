@@ -23,6 +23,7 @@ function authenticate(req, res, next) {
       sub: payload.sub,
       role: payload.role,
       tenantId: payload.tenantId,
+      clientId: payload.clientId ?? null,
     };
     return next();
   } catch {

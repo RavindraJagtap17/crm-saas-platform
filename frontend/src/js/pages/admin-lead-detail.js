@@ -259,7 +259,7 @@ function wireActions(content) {
           <label class="label" for="assign-select">Employee</label>
           <select class="select" id="assign-select">
             <option value="">— Unassign —</option>
-            ${assignable.map((u) => `<option value="${u.id}" ${String(u.id) === String(currentLead.assignedTo) ? "selected" : ""}>${escapeHtml(u.name)} (${u.role.replace("tenant_", "")})</option>`).join("")}
+            ${assignable.map((u) => `<option value="${u.id}" ${String(u.id) === String(currentLead.assignedTo) ? "selected" : ""}>${escapeHtml(u.name)} (${u.role.replace("client_", "")})</option>`).join("")}
           </select>
         </div>`,
       footerHtml: `<button class="btn btn-secondary" data-cancel>Cancel</button><button class="btn btn-primary" id="assign-confirm">Save</button>`,
@@ -356,10 +356,11 @@ function wireActions(content) {
 }
 
 async function main() {
-  const user = await requireRole("tenant_admin");
+  const user = await requireRole("client_admin");
   if (!user) return;
-  await applyTenantBranding();
   const content = mountShell({ activeKey: "leads", title: "Lead" });
+  if (!content) return;
+  await applyTenantBranding();
 
   if (!leadId) {
     content.innerHTML = emptyState({ title: "No lead specified" });

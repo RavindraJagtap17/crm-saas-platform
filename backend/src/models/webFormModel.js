@@ -1,8 +1,16 @@
 const crypto = require("crypto");
 const pool = require("../config/db");
 
+// DUAL-scoped (Category C): tenant_id is the managing agency, client_id is
+// the one client this form's leads belong to. Every write here is
+// tenant_id-scoped for authorization (an Agency Admin may only touch their
+// own agency's forms) while ALSO carrying client_id — the composite FK
+// added in migration 040 ((tenant_id, client_id) -> clients(tenant_id, id))
+// is what makes it structurally impossible to ever store a client_id that
+// doesn't actually belong to that tenant_id, not just an application-level
+// convention.
 const COLUMNS = `
-  id, tenant_id, form_key, name, source_id, product_id, allowed_domains,
+  id, tenant_id, client_id, form_key, name, source_id, product_id, allowed_domains,
   is_active, created_at, updated_at
 `;
 
@@ -11,7 +19,7 @@ function generateFormKey() {
 }
 
 // Public lookup — deliberately NOT tenant-scoped, since resolving the
-// tenant is exactly what this does for the public API (§A).
+// owning client is exactly what this does for the public API (§A).
 async function findByKey(formKey) {
   const [rows] = await pool.query(`SELECT ${COLUMNS} FROM web_forms WHERE form_key = ? LIMIT 1`, [formKey]);
   return rows[0] || null;
@@ -33,12 +41,12 @@ async function findById(tenantId, id) {
   return rows[0] || null;
 }
 
-async function create(tenantId, { name, sourceId, productId, allowedDomains }) {
+async function create(tenantId, { name, clientId, sourceId, productId, allowedDomains }) {
   const formKey = generateFormKey();
   const [result] = await pool.query(
-    `INSERT INTO web_forms (tenant_id, form_key, name, source_id, product_id, allowed_domains, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, TRUE)`,
-    [tenantId, formKey, name, sourceId, productId ?? null, JSON.stringify(allowedDomains)]
+    `INSERT INTO web_forms (tenant_id, client_id, form_key, name, source_id, product_id, allowed_domains, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)`,
+    [tenantId, clientId, formKey, name, sourceId, productId ?? null, JSON.stringify(allowedDomains)]
   );
   return findById(tenantId, result.insertId);
 }
