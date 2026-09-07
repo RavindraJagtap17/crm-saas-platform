@@ -5,6 +5,7 @@ const requireActiveTenant = require("../middlewares/requireActiveTenant");
 const requireRole = require("../middlewares/requireRole");
 const validateIdParam = require("../middlewares/validateIdParam");
 const controller = require("../controllers/lead.controller");
+const followUpController = require("../controllers/leadFollowUp.controller");
 
 const router = express.Router();
 
@@ -32,5 +33,12 @@ router.post("/:id/assign", validateIdParam(), requireRole("client_admin"), contr
 
 router.get("/:id/activities", validateIdParam(), controller.listActivities);
 router.post("/:id/activities", validateIdParam(), controller.createActivity);
+
+// Follow-up scheduling (§3): nested under a specific lead only for
+// creation — listing/reading/mutating an existing follow-up goes through
+// /api/follow-ups (leadFollowUp.routes.js), which already supports
+// `?leadId=` filtering, so there's no need for a second, duplicate list
+// route here.
+router.post("/:id/follow-ups", validateIdParam(), followUpController.createForLead);
 
 module.exports = router;

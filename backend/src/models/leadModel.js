@@ -243,11 +243,41 @@ async function clientTotals(clientId) {
     `SELECT
        COUNT(*) AS total,
        SUM(assigned_to IS NULL) AS unassigned,
-       SUM(is_duplicate) AS duplicates
+       SUM(is_duplicate) AS duplicates,
+       SUM(DATE(created_at) = CURDATE()) AS todayCount,
+       SUM(DATE(created_at) = CURDATE() - INTERVAL 1 DAY) AS yesterdayCount
      FROM leads WHERE client_id = ?`,
     [clientId]
   );
-  return { total: row.total, unassigned: row.unassigned || 0, duplicates: row.duplicates || 0 };
+  // mysql2 returns SUM() of a boolean expression as a numeric STRING when
+  // at least one row matches (and as null with zero rows) — Number(...)
+  // normalizes both cases to a real JS number; COUNT(*) doesn't need this
+  // (mysql2 already returns it as a number).
+  return {
+    total: row.total,
+    unassigned: Number(row.unassigned) || 0,
+    duplicates: Number(row.duplicates) || 0,
+    todayCount: Number(row.todayCount) || 0,
+    yesterdayCount: Number(row.yesterdayCount) || 0,
+  };
+}
+
+// Dashboard-only aggregate — a logged 'call' activity is the closest thing
+// this schema has to a "follow-up" (there is no scheduled/due-date concept
+// on a lead), so "today's follow-ups" is read as "calls logged today".
+// Optional restrictToUserId mirrors statusBreakdown's own scoping pattern.
+async function callsToday(clientId, { restrictToUserId } = {}) {
+  const clauses = ["client_id = ?", "type = 'call'", "DATE(created_at) = CURDATE()"];
+  const params = [clientId];
+  if (restrictToUserId) {
+    clauses.push("user_id = ?");
+    params.push(restrictToUserId);
+  }
+  const [[row]] = await pool.query(
+    `SELECT COUNT(*) AS count FROM lead_activities WHERE ${clauses.join(" AND ")}`,
+    params
+  );
+  return row.count;
 }
 
 async function employeeTotals(clientId, userId) {
@@ -261,7 +291,16 @@ async function employeeTotals(clientId, userId) {
        AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`,
     [clientId, userId]
   );
-  return { assigned: row.assigned, callsThisMonth: calls.callsThisMonth };
+  const todaysCalls = await callsToday(clientId, { restrictToUserId: userId });
+  // openCount (an open/non-final-status-lead proxy for "pending
+  // follow-up") used to live here — removed now that real follow-up
+  // scheduling exists (lead_follow_ups); see leadFollowUpModel.
+  // dashboardCounts, which dashboardService now reads instead.
+  return {
+    assigned: row.assigned,
+    callsThisMonth: calls.callsThisMonth,
+    callsToday: todaysCalls,
+  };
 }
 
 module.exports = {
@@ -279,5 +318,6 @@ module.exports = {
   monthlyVolume,
   statusBreakdown,
   clientTotals,
+  callsToday,
   employeeTotals,
 };

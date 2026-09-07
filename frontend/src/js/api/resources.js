@@ -73,6 +73,15 @@ export const leadsApi = {
   assign: (id, assignedTo) => api.post(`/api/leads/${id}/assign`, { assignedTo }),
   activities: (id) => api.get(`/api/leads/${id}/activities`),
   addActivity: (id, body) => api.post(`/api/leads/${id}/activities`, body),
+  createFollowUp: (id, body) => api.post(`/api/leads/${id}/follow-ups`, body),
+};
+
+export const followUpsApi = {
+  list: (query) => api.get(`/api/follow-ups${qs(query)}`),
+  get: (id) => api.get(`/api/follow-ups/${id}`),
+  update: (id, body) => api.patch(`/api/follow-ups/${id}`, body),
+  complete: (id) => api.post(`/api/follow-ups/${id}/complete`),
+  cancel: (id) => api.post(`/api/follow-ups/${id}/cancel`),
 };
 
 export const leadStatusesApi = {

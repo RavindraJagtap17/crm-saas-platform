@@ -6,16 +6,18 @@ import { openModal } from "../components/modal.js";
 import { toastSuccess, toastError } from "../components/toast.js";
 import { escapeHtml, formatDateTime, relativeTime, emptyState, setButtonLoading, duplicateBadge } from "../components/ui.js";
 import { buildLeadFormHtml, readLeadFormValues, clearLeadFormErrors, showLeadFormError } from "../components/leadForm.js";
+import { renderFollowUpPanel } from "../components/followUpPanel.js";
 
 const leadId = new URLSearchParams(window.location.search).get("id");
 let ref = null;
 let currentLead = null;
+let currentUser = null;
 
 function byId(list, id) {
   return list.find((x) => String(x.id) === String(id));
 }
 function activityIcon(type) {
-  return { call: "📞", note: "📝", assignment: "👤" }[type] || "•";
+  return { call: "📞", note: "📝", assignment: "👤", follow_up: "⏰" }[type] || "•";
 }
 
 async function loadRefData() {
@@ -81,6 +83,10 @@ function renderShell(content) {
             </div>
             <button class="btn btn-secondary btn-block" id="status-save">Update status</button>
           </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Follow-ups</h3><p class="card-subtitle">Only follow-ups assigned to you.</p></div>
+          <div class="card-body" id="follow-up-panel"></div>
         </div>
       </div>
     </div>
@@ -240,6 +246,7 @@ function wireActions() {
 async function main() {
   const user = await requireRole("client_employee");
   if (!user) return;
+  currentUser = user;
   const content = mountShell({ activeKey: "leads", title: "Lead" });
   if (!content) return;
   await applyTenantBranding();
@@ -254,6 +261,10 @@ async function main() {
     await reloadLead();
     wireActions();
     await renderActivities();
+    // No assignableUsers — a Client Employee may only ever schedule
+    // follow-ups assigned to themselves (server-enforced too; see
+    // leadFollowUpService.requireAssignable).
+    await renderFollowUpPanel(document.getElementById("follow-up-panel"), { leadId, currentUser });
   } catch (err) {
     content.innerHTML = emptyState({
       icon: "⚠",

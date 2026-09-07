@@ -90,6 +90,16 @@ export function duplicateBadge(isDuplicate) {
   return `<span class="badge badge-warning" title="Another lead shares this phone number">⧉ Duplicate</span>`;
 }
 
+// "Overdue" is never a stored status (see migration 056) — it's a pending
+// follow-up whose scheduled_at has passed, derived server-side into each
+// row's own isOverdue flag; this just renders whichever label applies.
+export function followUpStatusBadge(status, isOverdue) {
+  if (status === "pending" && isOverdue) return `<span class="badge badge-danger">Overdue</span>`;
+  const cls = { pending: "badge-warning", completed: "badge-success", cancelled: "badge-neutral" }[status] || "badge-neutral";
+  const label = { pending: "Pending", completed: "Completed", cancelled: "Cancelled" }[status] || status;
+  return `<span class="badge ${cls}">${escapeHtml(label)}</span>`;
+}
+
 export function statusPillHtml(name, color, isFinal) {
   const dotColor = color || "#9aa1b3";
   return `<span class="status-pill"><span class="dot" style="background:${escapeHtml(dotColor)}"></span>${escapeHtml(name)}${
