@@ -100,6 +100,27 @@ export function followUpStatusBadge(status, isOverdue) {
   return `<span class="badge ${cls}">${escapeHtml(label)}</span>`;
 }
 
+// Client license status — the normalized ACTIVE/EXPIRING_SOON/EXPIRED/
+// PENDING state clientLicenseService.normalizedStatus derives server-side
+// (never recomputed here from a raw date — the badge just renders
+// whichever bucket the API already decided).
+const LICENSE_STATUS_BADGE = { ACTIVE: "badge-success", EXPIRING_SOON: "badge-warning", EXPIRED: "badge-danger", PENDING: "badge-neutral" };
+const LICENSE_STATUS_LABEL = { ACTIVE: "Active", EXPIRING_SOON: "Expiring Soon", EXPIRED: "Expired", PENDING: "Pending" };
+export function licenseStatusBadge(status) {
+  const cls = LICENSE_STATUS_BADGE[status] || "badge-neutral";
+  const label = LICENSE_STATUS_LABEL[status] || status;
+  return `<span class="badge ${cls}">${escapeHtml(label)}</span>`;
+}
+
+// Whole-day count from clientLicenseService.daysRemaining — negative once
+// past expiry, null when there's no period end to measure (pending).
+export function formatDaysRemaining(days) {
+  if (days === null || days === undefined) return "—";
+  if (days < 0) return `${Math.abs(days)}d overdue`;
+  if (days === 0) return "Today";
+  return `${days}d`;
+}
+
 export function statusPillHtml(name, color, isFinal) {
   const dotColor = color || "#9aa1b3";
   return `<span class="status-pill"><span class="dot" style="background:${escapeHtml(dotColor)}"></span>${escapeHtml(name)}${

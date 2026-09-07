@@ -79,10 +79,33 @@ async function updateBranding(id, { name, logoUrl, brandPrimaryColor }) {
 
 // ---- Super Admin surface: platform-wide, never tenant-scoped ----
 
-async function listAll() {
-  const [rows] = await pool.query(
-    `SELECT ${PUBLIC_COLUMNS} FROM tenants ORDER BY created_at DESC`
-  );
+// `q` matches name/contact_email/mobile/gst_number — the fields an
+// operator would actually search an Agency by. `status` is an exact
+// match, validated against tenantValidators' own VALID_STATUSES one
+// layer up (superAdminService) so a typo 400s clearly instead of
+// silently returning zero rows. Both optional — listAll() with no args
+// is unchanged from before, still every tenant.
+async function listAll({ q, status } = {}) {
+  const clauses = [];
+  const params = [];
+  if (status) {
+    clauses.push("status = ?");
+    params.push(status);
+  }
+  if (q) {
+    clauses.push("(name LIKE ? OR contact_email LIKE ? OR mobile LIKE ? OR gst_number LIKE ?)");
+    const like = `%${q}%`;
+    params.push(like, like, like, like);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const [rows] = await pool.query(`SELECT ${PUBLIC_COLUMNS} FROM tenants ${where} ORDER BY created_at DESC`, params);
+  return rows;
+}
+
+// Dashboard's "recent registrations" widget — a small, dedicated query
+// rather than fetching every tenant and slicing client-side.
+async function listRecent(limit = 5) {
+  const [rows] = await pool.query(`SELECT ${PUBLIC_COLUMNS} FROM tenants ORDER BY created_at DESC LIMIT ?`, [limit]);
   return rows;
 }
 
@@ -111,11 +134,18 @@ async function platformCounts() {
   const [[{ totalTenants }]] = await pool.query(`SELECT COUNT(*) AS totalTenants FROM tenants`);
   const [byStatusRows] = await pool.query(`SELECT status, COUNT(*) AS count FROM tenants GROUP BY status`);
   const [[{ totalClients }]] = await pool.query(`SELECT COUNT(*) AS totalClients FROM clients`);
+  // Client's own active/inactive business status — distinct from its
+  // LICENSE status (see clientLicenseModel.listAllForDashboard, read
+  // separately by superAdminService.platformOverview for the license
+  // buckets); this is the same "active" tenantsByStatus already reports
+  // for Agencies, one level down.
+  const [[{ activeClients }]] = await pool.query(`SELECT COUNT(*) AS activeClients FROM clients WHERE status = 'active'`);
   const [[{ totalUsers }]] = await pool.query(`SELECT COUNT(*) AS totalUsers FROM users`);
   const [[{ totalLeads }]] = await pool.query(`SELECT COUNT(*) AS totalLeads FROM leads`);
   return {
     totalTenants,
     totalClients,
+    activeClients,
     totalUsers,
     totalLeads,
     tenantsByStatus: Object.fromEntries(byStatusRows.map((r) => [r.status, r.count])),
@@ -128,6 +158,7 @@ module.exports = {
   findById,
   updateBranding,
   listAll,
+  listRecent,
   updateStatus,
   platformCounts,
 };

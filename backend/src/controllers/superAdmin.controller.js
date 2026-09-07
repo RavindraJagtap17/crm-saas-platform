@@ -3,11 +3,15 @@ const clientLicensePriceService = require("../services/clientLicensePriceService
 const asyncHandler = require("../utils/asyncHandler");
 
 const listTenants = asyncHandler(async (req, res) => {
-  res.json({ tenants: await superAdminService.listTenants() });
+  res.json({ tenants: await superAdminService.listTenants(req.query) });
 });
 
 const getTenant = asyncHandler(async (req, res) => {
   res.json(await superAdminService.getTenant(req.params.id));
+});
+
+const getClient = asyncHandler(async (req, res) => {
+  res.json(await superAdminService.getClient(req.params.tenantId, req.params.clientId));
 });
 
 const createAgency = asyncHandler(async (req, res) => {
@@ -50,6 +54,7 @@ const upsertClientLicensePrice = asyncHandler(async (req, res) => {
 module.exports = {
   listTenants,
   getTenant,
+  getClient,
   createAgency,
   inviteAgencyAdmin,
   updateStatus,

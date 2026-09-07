@@ -26,10 +26,24 @@ function validateStatus(body) {
   return body.status;
 }
 
-// B2B2C restructure: agencies are now created by a Super Admin
-// (superAdminService.createAgency) rather than via self-service signup —
-// this is that flow's input validation. Just a name; status/slug are
-// server-computed, same as the old signup path.
+// Agency list filter (superAdminService.listTenants) — same VALID_STATUSES
+// as validateStatus above, reused rather than re-listed, so there is one
+// place that knows the real set of tenant statuses. Optional: undefined in
+// means "no filter", not an error.
+function validateStatusFilter(status) {
+  if (status === undefined) return undefined;
+  if (!VALID_STATUSES.includes(status)) {
+    throw httpError(`status must be one of: ${VALID_STATUSES.join(", ")}.`, 400);
+  }
+  return status;
+}
+
+// Manual escape-hatch alongside self-service Agency signup (POST
+// /api/auth/signup — see auth-signup.js): lets a Super Admin create an
+// agency directly and separately invite its first Agency Admin, e.g. for
+// support/onboarding cases that don't go through self-service signup.
+// Just a name; status/slug are server-computed, same as the self-service
+// path.
 function validateCreateAgency(body) {
   if (!isNonEmptyString(body?.name, 255)) {
     throw httpError("name is required.", 400);
@@ -37,4 +51,4 @@ function validateCreateAgency(body) {
   return { name: body.name.trim() };
 }
 
-module.exports = { validateUpdateBranding, validateStatus, validateCreateAgency };
+module.exports = { validateUpdateBranding, validateStatus, validateStatusFilter, validateCreateAgency };

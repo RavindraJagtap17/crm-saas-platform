@@ -59,4 +59,29 @@ async function markActive(conn, id, { razorpayPaymentId, currentPeriodEnd }) {
   );
 }
 
-module.exports = { findByClient, findByOrderId, upsertPending, markActive };
+// Super Admin surface: batch lookup for the Agency detail page's client
+// table (one query for every client on the page, instead of N+1). Plain
+// IN(...) — client_licenses has no tenant scoping of its own to add here;
+// the CALLER (superAdminService.getTenant) already only ever passes client
+// ids it just read for one specific tenant.
+async function listByClientIds(clientIds) {
+  if (!clientIds.length) return [];
+  const [rows] = await pool.query(`SELECT ${COLUMNS} FROM client_licenses WHERE client_id IN (?)`, [clientIds]);
+  return rows;
+}
+
+// Super Admin platform dashboard (§6): every Client's license bucket in
+// one query, LEFT JOINed so a Client with NO client_licenses row at all
+// still appears (as a row with status/current_period_end both NULL) —
+// clientLicenseService.normalizedStatus treats that the same as a
+// genuinely 'pending' license (never purchased == not yet paid for).
+async function listAllForDashboard() {
+  const [rows] = await pool.query(
+    `SELECT c.id AS client_id, cl.status, cl.current_period_end
+     FROM clients c
+     LEFT JOIN client_licenses cl ON cl.client_id = c.id`
+  );
+  return rows;
+}
+
+module.exports = { findByClient, findByOrderId, upsertPending, markActive, listByClientIds, listAllForDashboard };

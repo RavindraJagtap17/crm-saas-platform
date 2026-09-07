@@ -19,6 +19,17 @@ router.get("/tenants/:id", validateIdParam(), controller.getTenant);
 router.post("/tenants/:id/invite-admin", validateIdParam(), controller.inviteAgencyAdmin);
 router.patch("/tenants/:id/status", validateIdParam(), controller.updateStatus);
 
+// Super Admin Client detail (§3 of the license-monitoring feature) —
+// clientModel.findById(tenantId, clientId) inside the service verifies
+// the Client actually belongs to :tenantId, so a mismatched pair 404s
+// rather than leaking another Agency's Client.
+router.get(
+  "/tenants/:tenantId/clients/:clientId",
+  validateIdParam("tenantId"),
+  validateIdParam("clientId"),
+  controller.getClient
+);
+
 // "Agency pays per Client" restructure: the ONE price an Agency pays per
 // Client added. Never touches Razorpay itself. Replaces every prior
 // Agency-billing route this router used to expose (the Step-9 local plan

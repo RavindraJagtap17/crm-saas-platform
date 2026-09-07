@@ -36,6 +36,39 @@ async function getForClient(tenantId, clientId) {
   return serialize(license);
 }
 
+// ---- Super Admin monitoring (§4) — built entirely on top of
+// effectiveStatus above, never a second expiry calculation. No business
+// rule for "expiring soon" existed anywhere in this codebase before this
+// feature; 30 days was proposed and confirmed by the user rather than
+// invented silently.
+const EXPIRING_SOON_DAYS = 30;
+
+// Whole days until current_period_end (negative once past it). null when
+// there's no period end to measure against (pending/never-purchased).
+function daysRemaining(license) {
+  if (!license?.current_period_end) return null;
+  const diffMs = new Date(license.current_period_end).getTime() - Date.now();
+  return Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+}
+
+// A coarser, Super-Admin-facing view than effectiveStatus's plain
+// pending/active/expired: adds an EXPIRING_SOON bucket ahead of the
+// license actually lapsing. `license` may be a real row, a LEFT-JOIN row
+// with status/current_period_end NULL (clientLicenseModel.
+// listAllForDashboard — no license row exists at all), or null/undefined
+// outright — all three mean "not currently paid for" and normalize to the
+// same PENDING bucket, exactly like requireActiveTenant's own
+// clientLicenseInactive treats "never purchased" the same as "not active".
+function normalizedStatus(license) {
+  if (!license?.status) return "PENDING";
+  const status = effectiveStatus(license);
+  if (status === "pending") return "PENDING";
+  if (status === "expired") return "EXPIRED";
+  const remaining = daysRemaining(license);
+  if (remaining !== null && remaining <= EXPIRING_SOON_DAYS) return "EXPIRING_SOON";
+  return "ACTIVE";
+}
+
 /**
  * Used both for a brand-new Client (Add Client) and for an explicit
  * renewal (POST /api/clients/:id/license/renew) — a renewal is simply
@@ -145,4 +178,4 @@ async function confirmPayment(paymentEntity, conn) {
   return { outcome: "activated", clientId: license.client_id, tenantId: license.tenant_id, currentPeriodEnd };
 }
 
-module.exports = { getForClient, initiateForClient, confirmPayment, serialize };
+module.exports = { getForClient, initiateForClient, confirmPayment, serialize, normalizedStatus, daysRemaining, EXPIRING_SOON_DAYS };

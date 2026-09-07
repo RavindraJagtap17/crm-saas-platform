@@ -3,7 +3,7 @@ import { mountShell } from "../components/shell.js";
 import { superAdminApi } from "../api/resources.js";
 import { confirmDialog, openModal } from "../components/modal.js";
 import { toastSuccess, toastError } from "../components/toast.js";
-import { escapeHtml, formatDate, accountStatusBadge, setButtonLoading, emptyState } from "../components/ui.js";
+import { escapeHtml, formatDate, accountStatusBadge, licenseStatusBadge, formatDaysRemaining, setButtonLoading, emptyState } from "../components/ui.js";
 
 const tenantId = new URLSearchParams(window.location.search).get("id");
 
@@ -25,11 +25,20 @@ const STATUS_ACTIONS = {
   canceled: [{ to: "active", label: "Reactivate", danger: false }],
 };
 
+const LICENSE_FILTER_OPTIONS = [
+  { value: "", label: "All" },
+  { value: "ACTIVE", label: "Active" },
+  { value: "EXPIRING_SOON", label: "Expiring Soon" },
+  { value: "EXPIRED", label: "Expired" },
+  { value: "PENDING", label: "Pending" },
+];
+
 function openInviteAgencyAdminModal(onInvited) {
   openModal({
     title: "Invite Agency Admin",
     bodyHtml: `
       <form id="ia-form" novalidate>
+        <p class="hint mb-4">Add another Agency Admin to this Agency, or provision the first admin for a manually created Agency.</p>
         <div class="field">
           <label class="label" for="ia-name">Name</label>
           <input class="input" id="ia-name" placeholder="Jane Doe" />
@@ -69,6 +78,65 @@ function openInviteAgencyAdminModal(onInvited) {
   });
 }
 
+function businessInfoHtml(tenant) {
+  const row = (label, value) => `<div><span class="label">${label}</span><div class="mt-2">${value ? escapeHtml(value) : "—"}</div></div>`;
+  return `
+    <div class="field-row mb-4">
+      ${row("Address", tenant.address)}
+      ${row("City", tenant.city)}
+    </div>
+    <div class="field-row">
+      ${row("GST Number", tenant.gstNumber)}
+      ${row("Mobile", tenant.mobile)}
+    </div>
+    <div class="field-row mt-4">
+      ${row("Contact Email", tenant.contactEmail)}
+      ${row("Created", formatDate(tenant.createdAt))}
+    </div>
+  `;
+}
+
+function clientRowHtml(c) {
+  return `
+    <tr data-client-row="${c.id}" class="is-clickable" tabindex="0" role="button">
+      <td data-label="Client" class="table-cell-primary">${escapeHtml(c.name)}</td>
+      <td data-label="Status">${c.status === "active" ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-neutral">Inactive</span>'}</td>
+      <td data-label="License">${licenseStatusBadge(c.license.status)}</td>
+      <td data-label="Expiry" class="text-secondary text-sm">${c.license.expiresAt ? formatDate(c.license.expiresAt) : "—"}</td>
+      <td data-label="Days Remaining" class="text-secondary text-sm">${formatDaysRemaining(c.license.daysRemaining)}</td>
+    </tr>`;
+}
+
+function renderClientsTable(container, clients, licenseFilter) {
+  const filtered = licenseFilter ? clients.filter((c) => c.license.status === licenseFilter) : clients;
+
+  if (!clients.length) {
+    container.innerHTML = `<div class="card-body">${emptyState({ title: "No clients yet", desc: "The Agency Admin adds clients from their own Clients page." })}</div>`;
+    return;
+  }
+  if (!filtered.length) {
+    container.innerHTML = `<div class="card-body">${emptyState({ title: "No clients match this filter" })}</div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Client</th><th>Status</th><th>License</th><th>Expiry</th><th>Days Remaining</th></tr></thead>
+      <tbody>${filtered.map(clientRowHtml).join("")}</tbody>
+    </table>`;
+
+  container.querySelectorAll("[data-client-row]").forEach((tr) => {
+    const go = () => (window.location.href = `./client.html?tenantId=${tenantId}&clientId=${tr.dataset.clientRow}`);
+    tr.addEventListener("click", go);
+    tr.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        go();
+      }
+    });
+  });
+}
+
 async function render(content) {
   let data;
   try {
@@ -87,6 +155,11 @@ async function render(content) {
         <p class="page-subtitle">${escapeHtml(tenant.slug)}</p>
       </div>
       ${accountStatusBadge(tenant.status)}
+    </div>
+
+    <div class="card mb-6">
+      <div class="card-header"><h3 class="card-title">Business Information</h3></div>
+      <div class="card-body">${businessInfoHtml(tenant)}</div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-6)">
@@ -124,31 +197,21 @@ async function render(content) {
     </div>
 
     <div class="card mt-6">
-      <div class="card-header"><h3 class="card-title">Clients (${clientCount})</h3></div>
-      <div class="table-wrap" style="border:none;border-radius:0">
-        ${
-          clients.length
-            ? `<table class="data-table">
-                <thead><tr><th>Name</th><th>Status</th><th>Created</th></tr></thead>
-                <tbody>
-                  ${clients
-                    .map(
-                      (c) => `<tr>
-                        <td data-label="Name" class="table-cell-primary">${escapeHtml(c.name)}</td>
-                        <td data-label="Status">${c.status === "active" ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-neutral">Inactive</span>'}</td>
-                        <td data-label="Created" class="text-secondary text-sm">${formatDate(c.created_at)}</td>
-                      </tr>`
-                    )
-                    .join("")}
-                </tbody>
-              </table>`
-            : `<div class="card-body">${emptyState({ title: "No clients yet", desc: "The Agency Admin adds clients from their own Clients page." })}</div>`
-        }
+      <div class="card-header">
+        <h3 class="card-title">Clients (${clientCount})</h3>
+        <select class="select" id="license-filter" style="width:auto">
+          ${LICENSE_FILTER_OPTIONS.map((o) => `<option value="${o.value}">${o.label}</option>`).join("")}
+        </select>
       </div>
+      <div class="table-wrap" style="border:none;border-radius:0" id="clients-table"></div>
     </div>
   `;
 
   document.getElementById("invite-admin-btn").addEventListener("click", () => openInviteAgencyAdminModal(() => render(content)));
+
+  const clientsTableEl = document.getElementById("clients-table");
+  renderClientsTable(clientsTableEl, clients, "");
+  document.getElementById("license-filter").addEventListener("change", (e) => renderClientsTable(clientsTableEl, clients, e.target.value));
 
   document.getElementById("status-actions").innerHTML = (STATUS_ACTIONS[tenant.status] || [])
     .map((a) => `<button class="btn ${a.danger ? "btn-danger" : "btn-primary"}" data-to="${a.to}">${a.label}</button>`)

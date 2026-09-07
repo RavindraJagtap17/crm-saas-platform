@@ -138,8 +138,13 @@ export const metaApi = {
 
 export const superAdminApi = {
   overview: () => api.get("/api/super-admin/overview"),
-  listTenants: () => api.get("/api/super-admin/tenants"),
+  // query: { q, status } — both optional, server-side filtered (see
+  // tenantModel.listAll).
+  listTenants: (query) => api.get(`/api/super-admin/tenants${qs(query)}`),
   getTenant: (id) => api.get(`/api/super-admin/tenants/${id}`),
+  // Client license monitoring — verified server-side to belong to
+  // tenantId (see superAdminService.getClient); a mismatched pair 404s.
+  getClient: (tenantId, clientId) => api.get(`/api/super-admin/tenants/${tenantId}/clients/${clientId}`),
   // Manual escape hatch, separate from self-service Agency signup
   // (POST /api/auth/signup — see auth-signup.js): lets a Super Admin
   // create an agency directly and separately invite its first Agency
