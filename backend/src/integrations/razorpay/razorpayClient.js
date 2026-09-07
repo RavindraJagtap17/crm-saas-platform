@@ -96,6 +96,20 @@ function resumeSubscription(razorpaySubscriptionId) {
   return request("POST", `/subscriptions/${razorpaySubscriptionId}/resume`, { resume_at: "now" });
 }
 
+// "Agency pays per Client" restructure: a one-off Order against the
+// PLATFORM's own account (same Basic-Auth credentials as every function
+// above) — deliberately not razorpayOrderClient.js, which is Bearer-token-
+// only against a connected AGENCY account for Client-level billing. An
+// Order needs no pre-created Customer object (unlike createSubscription
+// above) — Checkout only needs the order_id itself plus amount/currency,
+// with prefill supplied client-side from the logged-in user.
+function createOrder({ amount, currency, receipt, notes }) {
+  return request("POST", "/orders", { amount, currency, receipt, notes });
+}
+function fetchOrder(orderId) {
+  return request("GET", `/orders/${orderId}`);
+}
+
 module.exports = {
   createCustomer,
   createSubscription,
@@ -104,4 +118,6 @@ module.exports = {
   cancelSubscription,
   pauseSubscription,
   resumeSubscription,
+  createOrder,
+  fetchOrder,
 };

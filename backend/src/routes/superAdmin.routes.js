@@ -19,26 +19,13 @@ router.get("/tenants/:id", validateIdParam(), controller.getTenant);
 router.post("/tenants/:id/invite-admin", validateIdParam(), controller.inviteAgencyAdmin);
 router.patch("/tenants/:id/status", validateIdParam(), controller.updateStatus);
 
-// Step 9: local plan catalog (§B/§P) — never touches Razorpay itself,
-// only this app's own reference/availability record of it.
-router.get("/plans", controller.listPlans);
-router.post("/plans", controller.createPlan);
-router.patch("/plans/:id", validateIdParam(), controller.updatePlan);
-router.patch("/plans/:id/active", validateIdParam(), controller.setPlanActive);
-
-// New business model: exactly ONE Agency plan — Super Admin sets/updates
-// its price. Never touches Razorpay itself, same as the Step 9 catalog
-// above; separate route/table (agency_subscription_plan, migration 041),
-// left independent of the Step 9 multi-plan catalog.
-router.get("/agency-plan", controller.getAgencyPlan);
-router.put("/agency-plan", controller.upsertAgencyPlan);
-router.get("/tenants/:id/agency-subscription", validateIdParam(), controller.getTenantAgencySubscription);
-
-// Step 9: any-tenant subscription override (§K).
-router.get("/tenants/:id/subscription", validateIdParam(), controller.getTenantSubscription);
-router.patch("/tenants/:id/subscription/plan", validateIdParam(), controller.changeTenantPlan);
-router.post("/tenants/:id/subscription/suspend", validateIdParam(), controller.suspendTenantSubscription);
-router.post("/tenants/:id/subscription/resume", validateIdParam(), controller.resumeTenantSubscription);
-router.post("/tenants/:id/subscription/cancel", validateIdParam(), controller.cancelTenantSubscription);
+// "Agency pays per Client" restructure: the ONE price an Agency pays per
+// Client added. Never touches Razorpay itself. Replaces every prior
+// Agency-billing route this router used to expose (the Step-9 local plan
+// catalog, its any-tenant subscription override, and the flat
+// single-Agency-plan model that superseded it in turn) — all removed in
+// this same restructure.
+router.get("/client-license-price", controller.getClientLicensePrice);
+router.put("/client-license-price", controller.upsertClientLicensePrice);
 
 module.exports = router;

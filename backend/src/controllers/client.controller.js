@@ -1,5 +1,7 @@
 const clientService = require("../services/clientService");
+const clientLicenseService = require("../services/clientLicenseService");
 const asyncHandler = require("../utils/asyncHandler");
+const logger = require("../utils/logger");
 
 const list = asyncHandler(async (req, res) => {
   res.json({ clients: await clientService.list(req.tenantId) });
@@ -9,9 +11,31 @@ const get = asyncHandler(async (req, res) => {
   res.json({ client: await clientService.get(req.tenantId, req.params.id) });
 });
 
+// "Agency pays per Client" restructure: Client creation always succeeds
+// locally first, then a License purchase is initiated as a separate,
+// best-effort step — same two-step orchestration pattern used throughout
+// this restructure. If Razorpay is unreachable, the Client still exists —
+// checkout is null, and the Agency Admin can retry via
+// POST /api/clients/:id/license/renew (initiateForClient is the same
+// function either way).
 const create = asyncHandler(async (req, res) => {
   const client = await clientService.create(req.tenantId, req.body);
-  res.status(201).json({ client });
+  let checkout = null;
+  try {
+    ({ checkout } = await clientLicenseService.initiateForClient(req.tenantId, client.id));
+  } catch (err) {
+    logger.warn(`Client creation: could not initiate license payment for client_id=${client.id}: ${err.message}`);
+  }
+  res.status(201).json({ client, checkout });
+});
+
+const getLicense = asyncHandler(async (req, res) => {
+  res.json({ license: await clientLicenseService.getForClient(req.tenantId, req.params.id) });
+});
+
+const renewLicense = asyncHandler(async (req, res) => {
+  const result = await clientLicenseService.initiateForClient(req.tenantId, req.params.id);
+  res.status(201).json(result);
 });
 
 const setStatus = asyncHandler(async (req, res) => {
@@ -59,6 +83,8 @@ module.exports = {
   list,
   get,
   create,
+  getLicense,
+  renewLicense,
   setStatus,
   inviteAdmin,
   limit,

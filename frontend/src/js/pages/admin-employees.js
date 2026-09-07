@@ -6,70 +6,18 @@ import { openModal, confirmDialog } from "../components/modal.js";
 import { toastSuccess, toastError } from "../components/toast.js";
 import { escapeHtml, emptyState, setButtonLoading, accountStatusBadge, roleLabel, formatDate, avatarHtml } from "../components/ui.js";
 
-/**
- * Step 11A: employees are now subscription-plan-limited (Confirmed
- * Business Rules — max_active_employees on the Client's current plan).
- * Seat info shown here is INFORMATIONAL ONLY, mirroring agency-clients.js's
- * own "the effective limit is always what the backend returns" discipline
- * — every capacity decision (invite/reactivate accepted or rejected) is
- * made server-side; this page just reflects seatUsage from GET /api/users
- * and disables the obviously-futile actions so the error path is rare,
- * not the primary defense.
- */
-function formatSeatSummary(seatUsage) {
-  const { activeEmployees, pendingInvitations, usedSeats, employeeLimit, availableSeats, hasCapacity } = seatUsage;
-  return {
-    activeText: `${activeEmployees} / ${employeeLimit}`,
-    pendingText: String(pendingInvitations),
-    totalText: `${usedSeats} / ${employeeLimit}`,
-    availableText: String(availableSeats),
-    blocked: !hasCapacity,
-  };
-}
-
 async function refresh(content) {
   const listEl = document.getElementById("employees-list");
   const invitationsEl = document.getElementById("invitations-list");
-  const summaryEl = document.getElementById("seat-summary");
-  const inviteBtn = document.getElementById("invite-btn");
   listEl.innerHTML = `<div class="card-body"><div class="skeleton skeleton-row"></div></div>`;
 
-  let users, invitations, seatUsage;
+  let users, invitations;
   try {
-    ({ users, invitations, seatUsage } = await usersApi.list());
+    ({ users, invitations } = await usersApi.list());
   } catch (err) {
     listEl.innerHTML = `<div class="card-body">${emptyState({ icon: "⚠", title: "Couldn't load your team", desc: err.message })}</div>`;
     return;
   }
-
-  const summary = formatSeatSummary(seatUsage);
-  summaryEl.innerHTML = `
-    <div class="flex gap-4" style="flex-wrap:wrap">
-      <div class="stat-card" style="padding:0">
-        <span class="stat-label">Active seats</span>
-        <span class="stat-value" style="font-size:1.25rem">${escapeHtml(summary.activeText)}</span>
-      </div>
-      <div class="stat-card" style="padding:0">
-        <span class="stat-label">Pending invitations</span>
-        <span class="stat-value" style="font-size:1.25rem">${escapeHtml(summary.pendingText)}</span>
-      </div>
-      <div class="stat-card" style="padding:0">
-        <span class="stat-label">Total reserved</span>
-        <span class="stat-value" style="font-size:1.25rem">${escapeHtml(summary.totalText)}</span>
-      </div>
-      <div class="stat-card" style="padding:0">
-        <span class="stat-label">Available</span>
-        <span class="stat-value" style="font-size:1.25rem">${escapeHtml(summary.availableText)}</span>
-      </div>
-    </div>
-    ${
-      summary.blocked
-        ? `<div class="alert alert-warning mt-3"><span>⚠</span><span>Employee limit reached. Upgrade your plan to add or reactivate an employee.</span></div>`
-        : ""
-    }
-  `;
-  inviteBtn.disabled = summary.blocked;
-  inviteBtn.title = summary.blocked ? "Employee limit reached. Upgrade your plan to add an employee." : "";
 
   // Pending invitations — a real invitation entity now (employee_invitations),
   // shown separately from the roster table below rather than as a
@@ -147,7 +95,7 @@ async function refresh(content) {
                 <td data-label="">
                   ${
                     u.status === "deactivated"
-                      ? `<button class="btn btn-secondary btn-sm" data-reactivate="${u.id}" ${summary.blocked ? "disabled" : ""} title="${summary.blocked ? "Employee limit reached. Upgrade your plan to reactivate." : ""}">Reactivate</button>`
+                      ? `<button class="btn btn-secondary btn-sm" data-reactivate="${u.id}">Reactivate</button>`
                       : u.role === "client_employee"
                         ? `<button class="btn btn-ghost btn-sm" data-deactivate="${u.id}">Deactivate</button>`
                         : ""
@@ -251,7 +199,6 @@ async function main() {
       <div><h2 class="page-title">Employees</h2><p class="page-subtitle"><span id="employee-count">0</span> active team member(s)</p></div>
       <button class="btn btn-primary" id="invite-btn">+ Invite</button>
     </div>
-    <div class="card card-pad mb-4" id="seat-summary"></div>
     <div class="card mb-4" id="invitations-list" hidden></div>
     <div class="card" id="employees-list"></div>
   `;

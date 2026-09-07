@@ -1,5 +1,4 @@
 const clientModel = require("../models/clientModel");
-const agencySubscriptionModel = require("../models/agencySubscriptionModel");
 const userModel = require("../models/userModel");
 const roleModel = require("../models/roleModel");
 const auditLogModel = require("../models/auditLogModel");
@@ -8,8 +7,7 @@ const customFieldService = require("./customFieldService");
 const leadSourceService = require("./leadSourceService");
 const productService = require("./productService");
 const httpError = require("../utils/httpError");
-const { isNonEmptyString } = require("../validators/primitives");
-const { validateStatus: validateClientStatusBody } = require("../validators/clientValidators");
+const { validateStatus: validateClientStatusBody, validateCreateClient } = require("../validators/clientValidators");
 const { validateInvite } = require("../validators/userValidators");
 
 function serialize(client) {
@@ -17,45 +15,35 @@ function serialize(client) {
     id: client.id,
     name: client.name,
     status: client.status,
+    address: client.address,
+    city: client.city,
+    gstNumber: client.gst_number,
+    mobile: client.mobile,
+    contactEmail: client.contact_email,
     createdAt: client.created_at,
     updatedAt: client.updated_at,
   };
 }
 
 /**
- * The effective client limit is ALWAYS resolved live from the agency's
- * current subscription — never cached on tenants, never a static column.
- * Read fresh on every check, exactly like requireActiveTenant re-reads
- * status fresh on every request.
- *
- * FIX (final integration audit, CRITICAL finding): this previously read
- * subscriptionModel/subscriptionPlanModel — the pre-B2B2C-restructure
- * subscriptions/subscription_plans catalog (migrations 018/019). Migration
- * 041 replaced that per-plan-tier catalog with a single global
- * agency_subscription_plan (price/currency only, no per-plan client-limit
- * field — see that migration's own header comment: "reusing [the old
- * table] here would either force a fake 'catalog of one' or repurpose a
- * column with a different meaning"). No Agency created through the actual
- * signup flow (authService.signUpAgency + billingService's
- * agencySubscriptionModel-based activation) ever gets a row in the OLD
- * table, so this always evaluated to limit=0 — silently blocking Client
- * creation for every real Agency, regardless of subscription status.
- *
- * Corrected to read agency_subscriptions (the table the real flow
- * actually populates). Since the current single-global-plan model has no
- * numeric per-plan client cap at all, an Agency with a genuinely usable
- * subscription (active, or grace_period — same "still allowed until its
- * own deadline" treatment already used throughout this codebase, e.g.
- * requireActiveTenant's own agencyGracePeriodExpired) is unlimited;
- * anything else (no row, pending, cancelled, expired) keeps the existing
- * limit=0 "blocked" behavior — the same 0-vs-null contract create() and
- * the GET /clients/limit response already depend on, unchanged.
+ * "Agency pays per Client" restructure: there is no Agency-level Client
+ * COUNT limit at all any more (confirmed business rule, unchanged from
+ * before this restructure — see the earlier UI/terminology audit). What
+ * gates adding a client now is exclusively whether the Agency pays for
+ * that specific Client's own License (clientLicenseService), never a cap
+ * on how many Clients already exist. This function previously derived a
+ * 0-vs-null limit from the Agency's own flat subscription
+ * (agency_subscriptions) — that concept no longer exists (Agency signup
+ * is free), so continuing to read it here would incorrectly block every
+ * Client creation for every Agency the moment that table stops being
+ * populated. Always null (unlimited) now; kept as a function (not
+ * inlined/removed) only because create()'s own limit-check block and
+ * GET /api/clients/limit's response shape both still depend on it —
+ * removing that plumbing entirely is a candidate for the broader cleanup
+ * pass that removes the rest of the old Agency-subscription system.
  */
 async function effectiveClientLimit(tenantId) {
-  const subscription = await agencySubscriptionModel.findByTenant(tenantId);
-  if (!subscription) return 0;
-  if (!["active", "grace_period"].includes(subscription.status)) return 0;
-  return null; // no per-plan client limit exists in the current single-global-plan Agency model — unlimited once genuinely subscribed
+  return null;
 }
 
 async function list(tenantId) {
@@ -121,8 +109,7 @@ async function listProducts(tenantId, clientId) {
  * at all (never allowed to create).
  */
 async function create(tenantId, body) {
-  if (!isNonEmptyString(body?.name, 255)) throw httpError("name is required.", 400);
-  const name = body.name.trim();
+  const clean = validateCreateClient(body);
 
   const limit = await effectiveClientLimit(tenantId);
   if (limit !== null) {
@@ -136,7 +123,7 @@ async function create(tenantId, body) {
     }
   }
 
-  const client = await clientModel.create(tenantId, { name });
+  const client = await clientModel.create(tenantId, clean);
   return serialize(client);
 }
 

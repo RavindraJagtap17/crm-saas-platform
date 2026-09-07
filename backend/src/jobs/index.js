@@ -1,19 +1,17 @@
 const scheduler = require("./scheduler");
-const { registerClientRenewalJobs } = require("./clientRenewalJobs");
 const { registerEmployeeInvitationJobs } = require("./employeeInvitationJobs");
 
 /**
- * Step 9A — the registration point for real business jobs. Step 9B added
- * the first four (Client renewal/grace/cancellation — see
- * clientRenewalJobs.js). Step 11B adds employee invitation expiry (see
- * employeeInvitationJobs.js). Still NOT registered here:
- *   - Agency grace-period expiry
- *   - OAuth token refresh
- * Each will eventually add its own registration call here once its own
- * step implements it.
+ * The registration point for real background jobs. Client renewal jobs
+ * (clientRenewalJobs.js) were removed in the "Agency pays per Client"
+ * restructure — there is no Client-level subscription/grace-period
+ * lifecycle to sweep any more (client_licenses has no grace period at
+ * all: a lapsed license just locks, evaluated lazily by
+ * requireActiveTenant on each request, same as everything else in this
+ * codebase — no scheduler needed for it). Employee invitation expiry
+ * (Step 11B) is unrelated to billing and stays.
  */
 function registerAllJobs() {
-  registerClientRenewalJobs();
   registerEmployeeInvitationJobs();
 }
 

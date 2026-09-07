@@ -20,6 +20,12 @@ router.post("/", controller.create);
 router.patch("/:id/status", validateIdParam(), controller.setStatus);
 router.post("/:id/invite-admin", validateIdParam(), controller.inviteAdmin);
 
+// "Agency pays per Client" restructure — per-Client License (a renewal is
+// the same initiateForClient() call POST /api/clients itself already
+// triggers on creation, just invoked explicitly here).
+router.get("/:id/license", validateIdParam(), controller.getLicense);
+router.post("/:id/license/renew", validateIdParam(), controller.renewLicense);
+
 // Custom field management — Agency Admin owns this for a selected client
 // (post-Phase-D ownership fix; Client Admin keeps read-only access via
 // /api/custom-fields, see customField.routes.js).

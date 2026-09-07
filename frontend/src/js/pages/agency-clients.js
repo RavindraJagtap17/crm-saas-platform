@@ -1,13 +1,62 @@
-import { requireRole } from "../session.js";
+import { requireRole, getCurrentUser } from "../session.js";
 import { mountShell } from "../components/shell.js";
 import { applyTenantBranding } from "../branding.js";
 import { clientsApi } from "../api/resources.js";
 import { renderTable } from "../components/dataTable.js";
 import { openModal, confirmDialog } from "../components/modal.js";
-import { toastSuccess, toastError } from "../components/toast.js";
+import { toast, toastSuccess, toastError } from "../components/toast.js";
 import { escapeHtml, formatDate, emptyState, setButtonLoading } from "../components/ui.js";
 
-let state = { clients: [], limit: null };
+let state = { clients: [], limit: null, licenses: {} };
+
+const RAZORPAY_CHECKOUT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
+let checkoutScriptPromise = null;
+
+// "Agency pays per Client" restructure — a one-off Order against the
+// PLATFORM's own Razorpay account (window.CRM_CONFIG.RAZORPAY_KEY_ID, the
+// same public key agency-billing.js's own Agency-subscription Checkout
+// already uses), never a connected Agency account. Small local helper
+// rather than a shared module, matching admin-billing.js/agency-billing.js's
+// own established precedent of deliberate small duplication over a
+// premature shared abstraction.
+function loadCheckoutScript() {
+  if (window.Razorpay) return Promise.resolve();
+  if (!checkoutScriptPromise) {
+    checkoutScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = RAZORPAY_CHECKOUT_SRC;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error("Could not load Razorpay Checkout. Check your connection and try again."));
+      document.head.appendChild(script);
+    });
+  }
+  return checkoutScriptPromise;
+}
+
+async function openCheckout({ razorpayKeyId, razorpayOrderId, amount, currency, clientName }, onSettled) {
+  try {
+    await loadCheckoutScript();
+  } catch (err) {
+    toastError(err.message);
+    return;
+  }
+  const user = getCurrentUser();
+  const razorpay = new window.Razorpay({
+    key: razorpayKeyId,
+    order_id: razorpayOrderId,
+    amount,
+    currency,
+    name: "Client License",
+    description: clientName ? `Client License — ${clientName}` : "Client License",
+    prefill: { name: user?.name || "", email: user?.email || "" },
+    theme: { color: "#4f46e5" },
+    // Browser-perceived success only — never trusted as payment proof;
+    // only the webhook (razorpayWebhookService.js) ever activates a license.
+    handler: () => onSettled("submitted"),
+    modal: { ondismiss: () => onSettled("dismissed") },
+  });
+  razorpay.open();
+}
 
 /**
  * The effective client limit is ALWAYS the number GET /api/clients/limit
@@ -31,18 +80,35 @@ function statusBadge(status) {
   return status === "active" ? `<span class="badge badge-success">Active</span>` : `<span class="badge badge-neutral">Inactive</span>`;
 }
 
+const LICENSE_STATUS_LABEL = { pending: "Awaiting payment", active: "Active", expired: "Expired" };
+const LICENSE_STATUS_BADGE = { pending: "badge-warning", active: "badge-success", expired: "badge-danger" };
+
+function licenseBadgeHtml(license) {
+  if (!license) return `<span class="text-tertiary text-sm">—</span>`;
+  return `<span class="badge ${LICENSE_STATUS_BADGE[license.status] || "badge-neutral"}">${LICENSE_STATUS_LABEL[license.status] || license.status}</span>`;
+}
+
 function columns() {
   return [
     { key: "name", label: "Client", render: (c) => `<span class="table-cell-primary">${escapeHtml(c.name)}</span>` },
     { key: "status", label: "Status", render: (c) => statusBadge(c.status) },
+    { key: "license", label: "License", render: (c) => licenseBadgeHtml(state.licenses[c.id]) },
     { key: "created", label: "Created", render: (c) => `<span class="text-secondary text-sm">${formatDate(c.createdAt)}</span>` },
     {
       key: "actions",
       label: "",
-      render: (c) =>
-        c.status === "active"
-          ? `<button class="btn btn-ghost btn-sm" data-deactivate="${c.id}">Deactivate</button>`
-          : `<button class="btn btn-secondary btn-sm" data-activate="${c.id}">Activate</button>`,
+      render: (c) => {
+        const license = state.licenses[c.id];
+        const licenseBtn =
+          license && (license.status === "pending" || license.status === "expired")
+            ? `<button class="btn btn-secondary btn-sm" data-renew="${c.id}">${license.status === "pending" ? "Resume Payment" : "Renew"}</button>`
+            : "";
+        const statusBtn =
+          c.status === "active"
+            ? `<button class="btn btn-ghost btn-sm" data-deactivate="${c.id}">Deactivate</button>`
+            : `<button class="btn btn-secondary btn-sm" data-activate="${c.id}">Activate</button>`;
+        return `<div class="flex gap-2">${licenseBtn}${statusBtn}</div>`;
+      },
     },
   ];
 }
@@ -60,7 +126,12 @@ async function refresh(content) {
     tableEl.innerHTML = emptyState({ icon: "⚠", title: "Couldn't load clients", desc: err.message });
     return;
   }
-  state = { clients, limit };
+
+  const licenseEntries = await Promise.all(
+    clients.map((c) => clientsApi.license(c.id).then(({ license }) => [c.id, license]).catch(() => [c.id, null]))
+  );
+  const licenses = Object.fromEntries(licenseEntries);
+  state = { clients, limit, licenses };
 
   const summary = formatLimitSummary(clients.length, limit);
   summaryEl.innerHTML = `
@@ -123,15 +194,42 @@ async function refresh(content) {
       }
     })
   );
+  tableEl.querySelectorAll("[data-renew]").forEach((btn) =>
+    btn.addEventListener("click", async (e) => {
+      const clientId = e.currentTarget.dataset.renew;
+      const client = clients.find((c) => String(c.id) === String(clientId));
+      setButtonLoading(e.currentTarget, true);
+      try {
+        const { checkout } = await clientsApi.renewLicense(clientId);
+        if (!checkout) {
+          toastError("Could not start the license payment. Try again shortly.");
+          return;
+        }
+        await openCheckout(
+          { ...checkout, clientName: client?.name },
+          (outcome) => {
+            if (outcome === "submitted") toast("Payment submitted. Waiting for payment confirmation.");
+            refresh(content);
+          }
+        );
+      } catch (err) {
+        toastError(err.message);
+      } finally {
+        setButtonLoading(e.currentTarget, false);
+      }
+    })
+  );
 }
 
 /**
- * §Client creation flow: Clients -> Add Client -> Client details -> Invite
- * Client Admin -> Client created. Creating the client and inviting its
- * first Client Admin are two separate API calls (mirrors how a Super
- * Admin creates an agency, then separately invites its first Agency
- * Admin) — an "Invite later" skip is offered since the client itself
- * already exists as soon as the first step succeeds.
+ * §Client creation flow: Clients -> Add Client -> License payment -> Client
+ * details -> Invite Client Admin -> Client created. Creating the client,
+ * paying for its License, and inviting its first Client Admin are
+ * separate steps (mirrors how a Super Admin creates an agency, then
+ * separately invites its first Agency Admin) — an "Invite later" skip is
+ * offered since the client itself already exists as soon as the first
+ * step succeeds, and payment confirmation is asynchronous (webhook-driven)
+ * regardless of when the invite happens.
  */
 function openInviteAdminStep(content, client) {
   openModal({
@@ -190,6 +288,31 @@ function openCreateClientModal(content) {
           <label class="label" for="c-name">Client name</label>
           <input class="input" id="c-name" placeholder="Acme Retail Co." />
         </div>
+        <div class="field">
+          <label class="label" for="c-address">Address</label>
+          <input class="input" id="c-address" placeholder="221B Baker Street" />
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="label" for="c-city">City</label>
+            <input class="input" id="c-city" placeholder="Mumbai" />
+          </div>
+          <div class="field">
+            <label class="label" for="c-gst">GST number</label>
+            <input class="input" id="c-gst" placeholder="27ABCDE1234F1Z5" style="text-transform:uppercase" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="label" for="c-mobile">Mobile</label>
+            <input class="input" id="c-mobile" placeholder="+919876543210" />
+          </div>
+          <div class="field">
+            <label class="label" for="c-contact-email">Contact email</label>
+            <input class="input" type="email" id="c-contact-email" placeholder="contact@acme-retail.com" />
+          </div>
+        </div>
+        <p class="hint">You'll pay for this Client's license right after creating it.</p>
         <div class="field-error" id="c-error" hidden></div>
       </form>`,
     footerHtml: `<button class="btn btn-secondary" data-cancel>Cancel</button><button class="btn btn-primary" id="c-submit">Create client</button>`,
@@ -201,10 +324,25 @@ function openCreateClientModal(content) {
         errEl.hidden = true;
         setButtonLoading(btn, true);
         try {
-          const { client } = await clientsApi.create({ name: modalEl.querySelector("#c-name").value.trim() });
+          const { client, checkout } = await clientsApi.create({
+            name: modalEl.querySelector("#c-name").value.trim(),
+            address: modalEl.querySelector("#c-address").value.trim(),
+            city: modalEl.querySelector("#c-city").value.trim(),
+            gstNumber: modalEl.querySelector("#c-gst").value.trim().toUpperCase(),
+            mobile: modalEl.querySelector("#c-mobile").value.trim(),
+            contactEmail: modalEl.querySelector("#c-contact-email").value.trim(),
+          });
           closeFn();
           toastSuccess("Client created.");
-          openInviteAdminStep(content, client);
+          if (checkout) {
+            await openCheckout({ ...checkout, clientName: client.name }, (outcome) => {
+              if (outcome === "submitted") toast("Payment submitted. Waiting for payment confirmation.");
+              openInviteAdminStep(content, client);
+            });
+          } else {
+            toastError("Could not start the license payment — you can retry from the Clients list.");
+            openInviteAdminStep(content, client);
+          }
         } catch (err) {
           errEl.hidden = false;
           errEl.textContent = err.message;

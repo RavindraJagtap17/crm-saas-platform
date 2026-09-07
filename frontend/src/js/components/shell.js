@@ -19,7 +19,7 @@ const NAV = {
       group: "Platform",
       items: [
         { key: "overview", label: "Platform Overview", href: "/public/super-admin/index.html", icon: "◆" },
-        { key: "plans", label: "Agency Plan", href: "/public/super-admin/plans.html", icon: "$" },
+        { key: "client-license-price", label: "Client License Price", href: "/public/super-admin/client-license-price.html", icon: "◈" },
       ],
     },
   ],
@@ -28,12 +28,9 @@ const NAV = {
       group: "Agency",
       items: [
         { key: "clients", label: "Clients", href: "/public/agency/clients.html", icon: "◎" },
-        { key: "client-plans", label: "Client Plans", href: "/public/agency/client-plans.html", icon: "▤" },
         { key: "web-forms", label: "Website Forms", href: "/public/agency/web-forms.html", icon: "⌗" },
         { key: "custom-fields", label: "Custom Fields", href: "/public/agency/custom-fields.html", icon: "✎" },
         { key: "branding", label: "Branding", href: "/public/agency/branding.html", icon: "◐" },
-        { key: "billing", label: "Billing", href: "/public/agency/billing.html", icon: "$" },
-        { key: "razorpay-connect", label: "Razorpay Account", href: "/public/agency/razorpay-connect.html", icon: "⇄" },
       ],
     },
   ],
@@ -43,7 +40,6 @@ const NAV = {
       items: [
         { key: "dashboard", label: "Dashboard", href: "/public/admin/dashboard.html", icon: "▤" },
         { key: "leads", label: "Leads", href: "/public/admin/leads.html", icon: "☍" },
-        { key: "billing", label: "Billing", href: "/public/admin/billing.html", icon: "$" },
       ],
     },
     {
@@ -104,9 +100,10 @@ function brandBlockHtml(role) {
  * every API call regardless of what this decides.
  *
  *  - super_admin: never blocked.
- *  - agency_admin: blocked only by their own agency's status; sent to
- *    Billing, the one page that can fix it (billing itself must pass
- *    allowBlocked so this never loops).
+ *  - agency_admin: blocked only by their own agency's status; sent to a
+ *    plain explanatory page — "Agency pays per Client" restructure means
+ *    an Agency has no billing capability of its own to fix this with
+ *    anymore (a suspension is a manual Super Admin action).
  *  - client_admin / client_employee: blocked by EITHER their client's
  *    status or their agency's status — neither role has any billing
  *    capability at all, so they're sent to a plain explanatory page
@@ -117,7 +114,7 @@ function computeBlockedRedirect(user) {
 
   if (user.role === "agency_admin") {
     if (!user.tenantStatus || user.tenantStatus === "active") return null;
-    return "/public/agency/billing.html";
+    return "/public/agency/account-inactive.html";
   }
 
   if (user.role === "client_admin" || user.role === "client_employee") {
@@ -146,7 +143,7 @@ function redirectIfBlocked(user, allowBlocked) {
  * full page (no custom framework).
  *
  * allowBlocked: pass true only from the one page a blocked user must
- * still be able to reach (agency/billing.html, admin/account-inactive.html,
+ * still be able to reach (agency/account-inactive.html, admin/account-inactive.html,
  * employee/account-inactive.html) — everywhere else, a blocked user is
  * redirected there instead of rendering.
  */

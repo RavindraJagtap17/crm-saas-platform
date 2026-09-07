@@ -6,14 +6,16 @@
  *
  * Extended (dev/test subscription fixtures): also ensures Test Agency 101
  * has a genuinely ACTIVE agency_subscriptions row and Test Client A1 has a
- * genuinely ACTIVE client_subscriptions row — real rows in the SAME tables
- * requireActiveTenant.js / clientService.effectiveClientLimit() /
- * clientBillingService.js read for every other tenant/client, so the
- * normal subscription-gating logic sees these dev accounts as truly
- * subscribed rather than the frontend/tests special-casing them. No
- * business logic, middleware, or migration is touched to make this true —
- * only data, inserted the same direct-SQL way this script already inserts
- * the dev tenant/client/users above.
+ * genuinely ACTIVE client_subscriptions row AND a genuinely ACTIVE
+ * client_licenses row — real rows in the SAME tables requireActiveTenant.js
+ * reads for every other tenant/client (client_licenses is what actually
+ * gates Client-level CRM access under the "Agency pays per Client" model;
+ * client_subscriptions is kept seeded too only because the not-yet-removed
+ * old Client-billing system still reads it), so the normal gating logic
+ * sees these dev accounts as truly active rather than the frontend/tests
+ * special-casing them. No business logic, middleware, or migration is
+ * touched to make this true — only data, inserted the same direct-SQL way
+ * this script already inserts the dev tenant/client/users above.
  *
  * NEVER run against a production database — dev-login itself is already
  * NODE_ENV-gated (see auth.routes.js), but this seeder has no such gate of
@@ -37,6 +39,8 @@ const DEV_AGENCY_CUSTOMER_RAZORPAY_ID = "cust_dev_seed_agency_101";
 const DEV_CLIENT_PLAN_NAME = "Dev Seed Plan (Test Client A1)";
 const DEV_CLIENT_SUBSCRIPTION_RAZORPAY_ID = "sub_dev_seed_client_a1";
 const DEV_CLIENT_CUSTOMER_RAZORPAY_ID = "cust_dev_seed_client_a1";
+const DEV_CLIENT_LICENSE_ORDER_ID = "order_dev_seed_client_a1";
+const DEV_CLIENT_LICENSE_PAYMENT_ID = "pay_dev_seed_client_a1";
 
 const DEV_USERS = [
   { email: "dev-superadmin@local.test", name: "Dev Super Admin", role: "super_admin", testKey: "super_admin" },
@@ -157,6 +161,38 @@ async function ensureActiveClientSubscription(conn, tenantId, clientId, plan) {
   return { id: result.insertId, created: true, repaired: false };
 }
 
+// "Agency pays per Client" restructure (client_licenses, migration 054) —
+// replaces what ensureActiveClientSubscription above used to be
+// responsible for as far as CRM-access gating goes (requireActiveTenant
+// now reads client_licenses, not client_subscriptions, for Client-level
+// access — see that file's own comment). Same "repair to active on every
+// run" invariant: "Test Client A1 must have an ACTIVE license" must hold
+// every time this script runs, including re-extending current_period_end
+// if a previous run's fixture has since lazily expired.
+async function ensureActiveClientLicense(conn, tenantId, clientId) {
+  const price = 99900;
+  const [rows] = await conn.query("SELECT id, status, current_period_end FROM client_licenses WHERE client_id = ? LIMIT 1", [clientId]);
+  if (rows[0]) {
+    const stillValid = rows[0].status === "active" && rows[0].current_period_end && new Date(rows[0].current_period_end).getTime() > Date.now();
+    if (stillValid) return { id: rows[0].id, created: false, repaired: false };
+    await conn.query(
+      `UPDATE client_licenses
+         SET status = 'active', price = ?, currency = 'INR',
+             razorpay_order_id = ?, razorpay_payment_id = ?,
+             current_period_end = DATE_ADD(NOW(), INTERVAL 1 YEAR)
+       WHERE id = ?`,
+      [price, DEV_CLIENT_LICENSE_ORDER_ID, DEV_CLIENT_LICENSE_PAYMENT_ID, rows[0].id]
+    );
+    return { id: rows[0].id, created: false, repaired: true };
+  }
+  const [result] = await conn.query(
+    `INSERT INTO client_licenses (tenant_id, client_id, price, currency, status, razorpay_order_id, razorpay_payment_id, current_period_end)
+     VALUES (?, ?, ?, 'INR', 'active', ?, ?, DATE_ADD(NOW(), INTERVAL 1 YEAR))`,
+    [tenantId, clientId, price, DEV_CLIENT_LICENSE_ORDER_ID, DEV_CLIENT_LICENSE_PAYMENT_ID]
+  );
+  return { id: result.insertId, created: true, repaired: false };
+}
+
 async function roleId(conn, name) {
   const [rows] = await conn.query("SELECT id FROM roles WHERE name = ? LIMIT 1", [name]);
   if (!rows[0]) throw new Error(`Role "${name}" not found — run migrations first (see migrations/027_add_new_roles.up.sql).`);
@@ -188,6 +224,7 @@ async function main() {
     const agencySubscription = await ensureActiveAgencySubscription(conn, tenantId, agencyPlan.id);
     const clientPlan = await findOrCreateClientPlan(conn, tenantId);
     const clientSubscription = await ensureActiveClientSubscription(conn, tenantId, clientId, clientPlan);
+    const clientLicense = await ensureActiveClientLicense(conn, tenantId, clientId);
 
     const scopeFor = {
       super_admin: { tenantId: null, clientId: null },
@@ -216,6 +253,7 @@ async function main() {
     console.log(`Agency plan (agency_subscription_plan singleton): [${agencyPlan.created ? "created" : "exists"}] id=${agencyPlan.id}`);
     console.log(`Client subscription (client_subscriptions, client_id=${clientId}): [${subState(clientSubscription)}] id=${clientSubscription.id}`);
     console.log(`Client plan (client_subscription_plans, tenant_id=${tenantId}): [${clientPlan.created ? "created" : "exists"}] id=${clientPlan.id}`);
+    console.log(`Client license (client_licenses, client_id=${clientId}): [${subState(clientLicense)}] id=${clientLicense.id}`);
 
     console.log("\nUse POST /api/auth/dev-login with { \"role\": \"<testKey>\" } to sign in as any of these (development only).");
   } catch (err) {

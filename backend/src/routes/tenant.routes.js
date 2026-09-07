@@ -17,11 +17,12 @@ const router = express.Router();
 // never "my own row specifically".
 router.use(authenticate, tenantScope, requireRole("agency_admin", "client_admin", "client_employee"));
 
-// GET is deliberately NOT gated by requireActiveTenant (Step 9 §I): a
-// pending_payment/suspended agency still needs to read its own tenant.status
-// (the frontend's billing page relies on this — see agency-billing.js), and
-// a blocked client-level user's own account-inactive page still wants to
-// show correct branding. Branding EDITS remain agency_admin-only.
+// GET is deliberately NOT gated by requireActiveTenant: a suspended agency
+// still needs to read its own tenant.status (the frontend's
+// agency/account-inactive.html relies on this — see shell.js's
+// computeBlockedRedirect), and a blocked client-level user's own
+// account-inactive page still wants to show correct branding. Branding
+// EDITS remain agency_admin-only.
 router.get("/", controller.getOwn);
 router.patch("/", requireActiveTenant, requireRole("agency_admin"), controller.updateOwn);
 

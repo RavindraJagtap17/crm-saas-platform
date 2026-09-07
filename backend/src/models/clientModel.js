@@ -1,6 +1,10 @@
 const pool = require("../config/db");
 
-const COLUMNS = `id, tenant_id, name, status, created_at, updated_at`;
+const COLUMNS = `
+  id, tenant_id, name, status,
+  address, city, gst_number, mobile, contact_email,
+  created_at, updated_at
+`;
 
 async function listByTenant(tenantId) {
   const [rows] = await pool.query(
@@ -38,10 +42,15 @@ async function countByTenant(tenantId) {
   return row.total;
 }
 
-async function create(tenantId, { name }) {
+// address/city/gstNumber/mobile/contactEmail (migration 053) — same
+// business/KYC fields as tenants (see tenantModel.createTenant's own
+// comment); contactEmail is the Client's own business contact address,
+// distinct from any individual Client Admin/Employee's own users.email.
+async function create(tenantId, { name, address, city, gstNumber, mobile, contactEmail }) {
   const [result] = await pool.query(
-    `INSERT INTO clients (tenant_id, name, status) VALUES (?, ?, 'active')`,
-    [tenantId, name]
+    `INSERT INTO clients (tenant_id, name, status, address, city, gst_number, mobile, contact_email)
+     VALUES (?, ?, 'active', ?, ?, ?, ?, ?)`,
+    [tenantId, name, address ?? null, city ?? null, gstNumber ?? null, mobile ?? null, contactEmail ?? null]
   );
   return findById(tenantId, result.insertId);
 }

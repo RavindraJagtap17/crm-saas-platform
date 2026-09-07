@@ -1,11 +1,9 @@
 const authService = require("../services/authService");
-const billingService = require("../services/billingService");
 const userModel = require("../models/userModel");
 const { verifyGoogleIdToken } = require("../integrations/google/verifyIdToken");
 const { getRefreshExpiryMs } = require("../utils/refreshToken");
 const asyncHandler = require("../utils/asyncHandler");
 const config = require("../config");
-const logger = require("../utils/logger");
 
 const REFRESH_COOKIE = "refresh_token";
 // Scoped to /api/auth so the browser only ever sends this cookie to the
@@ -41,31 +39,16 @@ const googleSignIn = asyncHandler(async (req, res) => {
 // of verifying the ID token here in the controller before handing a
 // trusted profile to the service layer.
 //
-// Two separate steps, deliberately not one atomic operation:
-// authService.signUpAgency creates the tenant + Agency Admin + session
-// (all local, no external call — fully succeeds or fully rolls back).
-// billingService.initiateAgencySubscription then creates the Razorpay
-// Customer + Subscription against the platform's existing account. If
-// that second step fails (e.g. Razorpay unreachable, or Super Admin
-// hasn't configured the Agency plan yet), the signup itself has already
-// succeeded — the account and session are real — so the failure is
-// surfaced as checkout: null rather than failing the whole request; the
-// new Agency Admin can retry via POST /api/billing/agency-subscription
-// (§ "User must be able to retry payment").
+// "Agency pays per Client" restructure: Agency signup is free — there is
+// no Razorpay step here at all anymore. authService.signUpAgency creates
+// the tenant (starting 'active' — see tenantModel.createTenant) + Agency
+// Admin + session, all local, in one transaction; the new Agency Admin can
+// use the CRM immediately.
 const signupAgency = asyncHandler(async (req, res) => {
   const profile = await verifyGoogleIdToken(req.body?.idToken);
   const { accessToken, rawRefreshToken, user } = await authService.signUpAgency(profile, req.body);
   setRefreshCookie(res, rawRefreshToken);
-
-  let checkout = null;
-  try {
-    const result = await billingService.initiateAgencySubscription(user.tenantId, user);
-    checkout = result.checkout;
-  } catch (err) {
-    logger.warn(`Agency signup: could not initiate subscription for tenant_id=${user.tenantId}: ${err.message}`);
-  }
-
-  res.status(201).json({ accessToken, user, checkout });
+  res.status(201).json({ accessToken, user });
 });
 
 // POST /api/auth/refresh — rotates the refresh token and issues a new access token.

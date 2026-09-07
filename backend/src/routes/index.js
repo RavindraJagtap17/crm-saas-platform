@@ -14,13 +14,7 @@ const superAdminRoutes = require("./superAdmin.routes");
 const webFormRoutes = require("./webForm.routes");
 const publicFormRoutes = require("./publicForm.routes");
 const metaRoutes = require("./meta.routes");
-const billingRoutes = require("./billing.routes");
 const razorpayWebhookRoutes = require("./razorpayWebhook.routes");
-const razorpayPartnerWebhookRoutes = require("./razorpayPartnerWebhook.routes");
-const clientPaymentWebhookRoutes = require("./clientPaymentWebhook.routes");
-const agencyRazorpayConnectRoutes = require("./agencyRazorpayConnect.routes");
-const clientSubscriptionPlanRoutes = require("./clientSubscriptionPlan.routes");
-const clientBillingRoutes = require("./clientBilling.routes");
 
 const router = express.Router();
 
@@ -39,13 +33,7 @@ router.use("/api/super-admin", superAdminRoutes);
 router.use("/api/web-forms", webFormRoutes);
 router.use("/api/public/lead-form", publicFormRoutes);
 router.use("/api/meta", metaRoutes);
-router.use("/api/billing", billingRoutes);
 router.use("/api/razorpay/webhook", razorpayWebhookRoutes);
-router.use("/api/razorpay/oauth-webhook", razorpayPartnerWebhookRoutes);
-router.use("/api/razorpay/client-webhook", clientPaymentWebhookRoutes);
-router.use("/api/agency-razorpay", agencyRazorpayConnectRoutes);
-router.use("/api/client-plans", clientSubscriptionPlanRoutes);
-router.use("/api/client-billing", clientBillingRoutes);
 
 // Future route namespaces (added in later steps, per the approved spec §22):
 // ...

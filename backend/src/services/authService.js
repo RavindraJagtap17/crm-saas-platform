@@ -22,7 +22,7 @@ function httpError(message, status, code) {
 // effective_tenant_id) — for a client-level user this comes via
 // clients.tenant_id, never their own always-NULL users.tenant_id.
 // tenantStatus/clientStatus are UX-only signals for the frontend (e.g.
-// redirect a pending_payment agency_admin to billing, or show a
+// redirect a suspended agency_admin to the account-inactive page, or show a
 // deactivated-client banner) — the actual access gate is enforced
 // server-side by requireActiveTenant, never these fields alone.
 function safeUser(user) {
@@ -106,23 +106,24 @@ async function signInWithGoogle(googleProfile) {
  *
  * `googleProfile` is already-verified (caller resolves it via
  * verifyGoogleIdToken exactly like signInWithGoogle's caller does — this
- * function never sees a raw ID token). Creates ONLY the tenant and its
- * first Agency Admin here, both in one local transaction with no external
- * API call — Razorpay subscription creation is a deliberately separate
- * step (billingService.initiateAgencySubscription, called right after
- * this by auth.controller.js) so a Razorpay-side failure can never leave
- * a half-created account: by the time this function returns, the tenant,
- * its admin, and their session all either fully exist or don't exist at
- * all.
+ * function never sees a raw ID token). Creates the tenant and its first
+ * Agency Admin here, in one local transaction with no external API call
+ * at all: by the time this function returns, the tenant, its admin, and
+ * their session all either fully exist or don't exist at all.
  *
  * Unlike every other account-creation path in this file, the resulting
  * user starts 'active' with google_id already linked (userModel.
  * createActiveAgencyAdmin) — the person has already proven their identity
  * via the same verified Google ID token used for ordinary sign-in, so
  * there is no separate invited -> activate step to go through.
+ *
+ * "Agency pays per Client" restructure: this is the ONLY step — signup is
+ * free, so the tenant this creates starts 'active' immediately (see
+ * tenantModel.createTenant), not a separate best-effort billing step
+ * afterward.
  */
 async function signUpAgency(googleProfile, body) {
-  const { name } = validateSignupAgency(body);
+  const { name, address, city, gstNumber, mobile, contactEmail } = validateSignupAgency(body);
 
   const existingUser = await userModel.findByEmail(googleProfile.email);
   if (existingUser) {
@@ -136,7 +137,7 @@ async function signUpAgency(googleProfile, body) {
   try {
     await conn.beginTransaction();
     const slug = await tenantModel.generateUniqueSlug(conn, name);
-    const tenantId = await tenantModel.createTenant(conn, { name, slug });
+    const tenantId = await tenantModel.createTenant(conn, { name, slug, address, city, gstNumber, mobile, contactEmail });
     user = await userModel.createActiveAgencyAdmin(conn, tenantId, {
       email: googleProfile.email,
       name: googleProfile.name || name,

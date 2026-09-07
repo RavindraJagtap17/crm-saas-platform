@@ -9,11 +9,17 @@ import { escapeHtml } from "../components/ui.js";
  * told every visitor signup wasn't available at all, contradicting the
  * backend's own working flow (see the Agency-billing migration report).
  *
+ * Extended for the "Agency pays per Client" restructure: registration now
+ * also collects the Agency's own business/KYC details (address, city,
+ * GST, mobile, contact email) — all required, validated server-side by
+ * agencySubscriptionValidators.validateSignupAgency and stored directly
+ * on tenants (migration 052).
+ *
  * Google Identity Services' rendered button fires its callback the moment
- * an account is picked — it cannot be gated on a form field the way a
- * normal submit button can. So the Agency name is validated inside the
- * callback itself: an empty name shows an inline error and does not call
- * the API; the user fills it in and clicks the Google button again (a
+ * an account is picked — it cannot be gated on form fields the way a
+ * normal submit button can. So every field is validated inside the
+ * callback itself: any invalid field shows an inline error and does not
+ * call the API; the user fixes it and clicks the Google button again (a
  * fresh, valid credential each time — safe to request repeatedly).
  *
  * No Razorpay Checkout logic lives here on purpose: a fresh agency starts
@@ -36,28 +42,69 @@ function clearAlert() {
   document.getElementById("alert-slot").innerHTML = "";
 }
 
-function showNameError(message) {
-  const errEl = document.getElementById("su-name-error");
-  errEl.hidden = false;
-  errEl.textContent = message;
+const FIELDS = [
+  { id: "su-agency-name", key: "name", label: "agency name" },
+  { id: "su-address", key: "address", label: "address" },
+  { id: "su-city", key: "city", label: "city" },
+  { id: "su-gst", key: "gstNumber", label: "GST number" },
+  { id: "su-mobile", key: "mobile", label: "mobile number" },
+  { id: "su-contact-email", key: "contactEmail", label: "contact email" },
+];
+
+function showFieldError(fieldId, message) {
+  document.getElementById(`${fieldId}-error`).textContent = message;
+  document.getElementById(`${fieldId}-error`).hidden = !message;
 }
 
-function clearNameError() {
-  document.getElementById("su-name-error").hidden = true;
+function clearFieldErrors() {
+  FIELDS.forEach((f) => showFieldError(f.id, ""));
+}
+
+// Loose, client-side sanity checks only — mirrors the server's own
+// validators (agencySubscriptionValidators.validateSignupAgency /
+// primitives.isGstin/isPhoneNumber/isLikelyEmail) just closely enough to
+// give a same-field inline error instead of a generic alert; the server
+// remains the actual authority.
+const GSTIN_PATTERN = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/;
+const PHONE_PATTERN = /^\+?[0-9]{7,15}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function readAndValidateFields() {
+  clearFieldErrors();
+  const values = {};
+  let firstInvalidId = null;
+
+  FIELDS.forEach((f) => {
+    values[f.key] = document.getElementById(f.id).value.trim();
+  });
+
+  const fail = (fieldId, message) => {
+    showFieldError(fieldId, message);
+    if (!firstInvalidId) firstInvalidId = fieldId;
+  };
+
+  if (!values.name) fail("su-agency-name", "Agency name is required.");
+  if (!values.address) fail("su-address", "Address is required.");
+  if (!values.city) fail("su-city", "City is required.");
+  if (!GSTIN_PATTERN.test(values.gstNumber.toUpperCase())) fail("su-gst", "Enter a valid 15-character GSTIN.");
+  else values.gstNumber = values.gstNumber.toUpperCase();
+  if (!PHONE_PATTERN.test(values.mobile)) fail("su-mobile", "Enter a valid mobile number.");
+  if (!EMAIL_PATTERN.test(values.contactEmail)) fail("su-contact-email", "Enter a valid email address.");
+
+  if (firstInvalidId) {
+    document.getElementById(firstInvalidId).focus();
+    return null;
+  }
+  return values;
 }
 
 async function handleCredentialResponse(response) {
   clearAlert();
-  const name = document.getElementById("su-agency-name").value.trim();
-  if (!name) {
-    showNameError("Enter your agency's name first, then click the Google button again.");
-    document.getElementById("su-agency-name").focus();
-    return;
-  }
-  clearNameError();
+  const fields = readAndValidateFields();
+  if (!fields) return;
 
   try {
-    const { user } = await authApi.signup(response.credential, name);
+    const { user } = await authApi.signup(response.credential, fields);
     window.location.href = homeForRole(user.role);
   } catch (err) {
     if (err.code === "ACCOUNT_EXISTS") {

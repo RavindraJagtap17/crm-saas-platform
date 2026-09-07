@@ -3,14 +3,14 @@ import { qs } from "../components/ui.js";
 
 export const authApi = {
   google: (idToken) => api.post("/api/auth/google", { idToken }),
-  // Self-service Agency signup (finalized business model) — the signing-up
-  // person's identity comes from the Google ID token, never a form field;
-  // `name` here is the AGENCY's name. checkout in the response is null
-  // when Razorpay couldn't be reached at signup time (see auth.controller.js);
-  // either way the new Agency Admin lands on their own Billing page (via
-  // shell.js's blocked-redirect, since a fresh agency starts pending_payment)
-  // to complete or resume payment — this call never opens Checkout itself.
-  signup: (idToken, name) => api.post("/api/auth/signup", { idToken, name }),
+  // Self-service Agency signup — the signing-up person's identity comes
+  // from the Google ID token, never a form field; `fields` carries the
+  // Agency's own business/KYC details (name, address, city, gstNumber,
+  // mobile, contactEmail — all required, see agencySubscriptionValidators.
+  // validateSignupAgency). "Agency pays per Client" restructure: Agency
+  // signup is free — no checkout/payment step here at all, the new Agency
+  // Admin lands straight on their console.
+  signup: (idToken, fields) => api.post("/api/auth/signup", { idToken, ...fields }),
   me: () => api.get("/api/auth/me"),
   // Development-only — the backend route itself doesn't exist outside a
   // non-production NODE_ENV (see session.js's isDevBackend()); calling
@@ -38,6 +38,12 @@ export const clientsApi = {
   // The plan-derived effective client limit — ALWAYS read from here, never
   // computed client-side. null = unlimited.
   limit: () => api.get("/api/clients/limit"),
+  // "Agency pays per Client" restructure — create()'s response now also
+  // carries `checkout` (null if Razorpay couldn't be reached at creation
+  // time; renew() is the same underlying call, used to retry or to renew
+  // an expired license).
+  license: (id) => api.get(`/api/clients/${id}/license`),
+  renewLicense: (id) => api.post(`/api/clients/${id}/license/renew`),
   customFields: {
     list: (clientId) => api.get(`/api/clients/${clientId}/custom-fields`),
     create: (clientId, body) => api.post(`/api/clients/${clientId}/custom-fields`, body),
@@ -48,8 +54,9 @@ export const clientsApi = {
 };
 
 export const usersApi = {
-  // Step 11A: response now also includes `invitations` (pending) and
-  // `seatUsage` (informational — backend remains authoritative).
+  // Response includes `invitations` (pending) alongside `users` — no
+  // employee-seat limit exists anymore, so there is nothing to report a
+  // capacity summary against.
   list: () => api.get("/api/users"),
   invite: (body) => api.post("/api/users/invite", body),
   cancelInvitation: (id) => api.post(`/api/users/invitations/${id}/cancel`),
@@ -120,61 +127,6 @@ export const metaApi = {
   capiEvents: () => api.get("/api/meta/capi/events"),
 };
 
-// Agency Admin only — managing the agency's own Client plan catalog
-// (price/billing cycle/employee limit/active state). No Client-facing
-// read endpoint exists yet — Client subscription work is a later step.
-// Client Admin/Employee — the Client's own subscription to its Agency's
-// plans. list/get are readable by both roles; choose/cancel are
-// client_admin only (enforced server-side too — see clientBilling.routes.js).
-// No payment/checkout call exists yet — see clientBillingService.js's
-// header comment for the exact Razorpay verification boundary.
-export const clientBillingApi = {
-  plans: () => api.get("/api/client-billing/plans"),
-  subscription: () => api.get("/api/client-billing/subscription"),
-  choose: (planId) => api.post("/api/client-billing/subscription", { planId }),
-  retry: () => api.post("/api/client-billing/subscription/retry"),
-  payRenewal: () => api.post("/api/client-billing/subscription/pay-renewal"),
-  downgrade: (planId) => api.post("/api/client-billing/subscription/downgrade", { planId }),
-  upgrade: (planId) => api.post("/api/client-billing/subscription/upgrade", { planId }),
-  cancel: () => api.post("/api/client-billing/subscription/cancel"),
-};
-
-export const clientPlansApi = {
-  list: () => api.get("/api/client-plans"),
-  get: (id) => api.get(`/api/client-plans/${id}`),
-  create: (body) => api.post("/api/client-plans", body),
-  update: (id, body) => api.put(`/api/client-plans/${id}`, body),
-  deactivate: (id) => api.post(`/api/client-plans/${id}/deactivate`),
-};
-
-// Agency Admin only — connecting/viewing/disconnecting the agency's own
-// Razorpay account (Technology Partner OAuth). Never returns a token —
-// see agencyRazorpayConnectService.serializeConnection on the backend.
-export const agencyRazorpayApi = {
-  connect: () => api.get("/api/agency-razorpay/connect"),
-  connection: () => api.get("/api/agency-razorpay/connection"),
-  disconnect: () => api.delete("/api/agency-razorpay/connection"),
-};
-
-// The OLD multi-plan billingApi.plans/subscription/payments/subscribe/
-// changePlan client functions (Step 9 subscriptionModel-backed) were
-// removed here — zero frontend surfaces called them any more after
-// agency-billing.js was migrated to the functions below. Their backend
-// routes/controller/service are deliberately left in place (still used by
-// any tenant still on that old flow — see billingService.js's own
-// comment) even though no frontend wrapper remains to call them.
-export const billingApi = {
-  // New business model — single-plan self-service Agency subscription
-  // (agency_subscription_plan/agency_subscriptions). getAgencyPlan is the
-  // PUBLIC price preview (no auth) shown on the signup page and re-used
-  // here for the pre-subscribe preview; the other three are the signed-in
-  // Agency Admin's own subscription.
-  getAgencyPlan: () => api.get("/api/billing/agency-plan"),
-  getAgencySubscription: () => api.get("/api/billing/agency-subscription"),
-  initiateAgencySubscription: () => api.post("/api/billing/agency-subscription"),
-  cancelAgencySubscription: () => api.post("/api/billing/agency-subscription/cancel"),
-};
-
 export const superAdminApi = {
   overview: () => api.get("/api/super-admin/overview"),
   listTenants: () => api.get("/api/super-admin/tenants"),
@@ -187,20 +139,8 @@ export const superAdminApi = {
   createAgency: (name) => api.post("/api/super-admin/tenants", { name }),
   inviteAgencyAdmin: (id, body) => api.post(`/api/super-admin/tenants/${id}/invite-admin`, body),
   updateStatus: (id, status) => api.patch(`/api/super-admin/tenants/${id}/status`, { status }),
-  // The OLD Step 9 local-plan-catalog and any-tenant-subscription-override
-  // client functions (listPlans/createPlan/updatePlan/setPlanActive/
-  // getTenantSubscription/changeTenantPlan/suspendTenantSubscription/
-  // resumeTenantSubscription/cancelTenantSubscription) were removed here —
-  // zero frontend surfaces called them any more after super-admin-plans.js
-  // and super-admin-tenant.js were migrated to the new-model functions
-  // below. Their backend routes/controller/service are deliberately left
-  // in place (still used by any tenant still on that old flow).
-  // New business model: the ONE Agency plan Super Admin prices.
-  getAgencyPlan: () => api.get("/api/super-admin/agency-plan"),
-  upsertAgencyPlan: (body) => api.put("/api/super-admin/agency-plan", body),
-  // Read-only view of one Agency's real current subscription (new model) —
-  // reuses billingService.getAgencySubscriptionForTenant, the same
-  // function the Agency Admin's own billing route calls, just exposed
-  // here for any tenant id instead of only the caller's own.
-  getTenantAgencySubscription: (id) => api.get(`/api/super-admin/tenants/${id}/agency-subscription`),
+  // "Agency pays per Client" restructure: the ONE price an Agency pays per
+  // Client added.
+  getClientLicensePrice: () => api.get("/api/super-admin/client-license-price"),
+  upsertClientLicensePrice: (body) => api.put("/api/super-admin/client-license-price", body),
 };

@@ -23,7 +23,7 @@ async function main() {
   const clientBlocked = !!user.clientStatus && user.clientStatus !== "active";
 
   const desc = agencyBlocked
-    ? "Your agency's subscription isn't active right now. Please contact your agency administrator — they can see and resolve this from their Billing page."
+    ? "Your agency's account isn't active right now. Please contact your agency administrator."
     : "Your client account has been deactivated by your agency administrator. Contact them to have it reactivated.";
 
   content.innerHTML = `

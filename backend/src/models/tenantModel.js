@@ -8,7 +8,9 @@ const { slugify } = require("../utils/slugify");
 // it is an explicit later cleanup step, not part of this refactor.
 const PUBLIC_COLUMNS = `
   id, name, slug, status, logo_url, brand_primary_color,
-  theme_settings, subdomain, custom_domain, created_at, updated_at
+  theme_settings, subdomain, custom_domain,
+  address, city, gst_number, mobile, contact_email,
+  created_at, updated_at
 `;
 
 // Runs inside the caller's transaction connection throughout — tenant
@@ -35,10 +37,25 @@ async function generateUniqueSlug(conn, name) {
 // employee_limit is deliberately omitted — it takes the schema's own
 // DEFAULT 3 (see migrations/006../tenants), so the "starts at 3" rule
 // lives in exactly one place rather than being repeated here.
-async function createTenant(conn, { name, slug }) {
+//
+// address/city/gstNumber/mobile/contactEmail (migration 052) are the new
+// business/KYC fields the signup form now collects — contactEmail is
+// deliberately distinct from the signing-up person's own users.email
+// (their Google-verified login identity); this is the Agency's own
+// business contact address instead.
+//
+// "Agency pays per Client" restructure: a fresh Agency starts 'active',
+// not 'pending_payment' — Agency signup is free (there is no Agency-level
+// subscription/payment left to wait on at all; see requireActiveTenant's
+// own comment). 'pending_payment' remains a valid ENUM value in the schema
+// (never touched — migrations are never edited) but nothing inserts it
+// anymore; the only way a tenant becomes non-'active' now is a manual
+// Super Admin suspension.
+async function createTenant(conn, { name, slug, address, city, gstNumber, mobile, contactEmail }) {
   const [result] = await conn.query(
-    `INSERT INTO tenants (name, slug, status) VALUES (?, ?, 'pending_payment')`,
-    [name, slug]
+    `INSERT INTO tenants (name, slug, status, address, city, gst_number, mobile, contact_email)
+     VALUES (?, ?, 'active', ?, ?, ?, ?, ?)`,
+    [name, slug, address ?? null, city ?? null, gstNumber ?? null, mobile ?? null, contactEmail ?? null]
   );
   return result.insertId;
 }
