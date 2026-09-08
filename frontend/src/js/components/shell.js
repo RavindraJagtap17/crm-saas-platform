@@ -19,6 +19,7 @@ const NAV = {
       group: "Platform",
       items: [
         { key: "overview", label: "Platform Overview", href: "/public/super-admin/index.html", icon: "◆" },
+        { key: "integration-monitoring", label: "Integration Monitoring", href: "/public/super-admin/integration-monitoring.html", icon: "⌗" },
         { key: "client-license-price", label: "Client License Price", href: "/public/super-admin/client-license-price.html", icon: "◈" },
       ],
     },

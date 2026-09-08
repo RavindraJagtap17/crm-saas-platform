@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const integrationConnectionModel = require("../models/integrationConnectionModel");
+const integrationEventModel = require("../models/integrationEventModel");
 const integrationConnectionService = require("./integrationConnectionService");
 const ingestionService = require("./ingestionService");
 const linkedinClient = require("../integrations/linkedin/linkedinClient");
@@ -265,12 +266,88 @@ async function listForms(clientId) {
 }
 
 /**
+ * Integration event recovery & operational hardening — the provider
+ * enrichment hook registered with ingestionService below. Called for a
+ * LinkedIn event whose persisted raw_payload is still just the pre-fetch
+ * placeholder (needsEnrichment: true, see handleWebhookEvent), whether
+ * this is the very first processing attempt (called synchronously, in
+ * the same request LinkedIn's webhook POST is waiting on — see
+ * processClaimedEvent in ingestionService.js) or a later retry/recovery
+ * attempt (called asynchronously, possibly minutes or hours later, by
+ * the EXACT SAME code path — there is no second, parallel "recovery"
+ * implementation to keep in sync). Everything needed to redo the fetch —
+ * client_id, the notification's own leadGenFormResponse — is already on
+ * the persisted event row; nothing here trusts anything from outside it.
+ *
+ * Returns a complete NormalizedLead, or null if this notification should
+ * be acknowledged without ever becoming a CRM lead (a test lead,
+ * discoverable only once the fetch itself succeeds). Throws on a fetch
+ * failure — classified retryable vs permanent by ingestionService's own
+ * existing isRetryable() (a 4xx status is permanent), exactly like any
+ * other processing failure; no LinkedIn-specific classification lives in
+ * ingestionService itself.
+ */
+async function enrichEvent(event) {
+  const connection = await integrationConnectionModel.findByClientAndProvider(event.client_id, PROVIDER);
+  if (!connection) {
+    // The Client disconnected LinkedIn between the notification arriving
+    // and this (re)processing attempt — reconnecting doesn't retroactively
+    // fix this specific already-logged event, so this is permanent.
+    throw httpError("LinkedIn connection no longer exists for this client.", 400);
+  }
+
+  const notification = event.raw_payload?.notification;
+  const responseId = leadResponseIdFromUrn(notification?.leadGenFormResponse);
+  if (!responseId) {
+    throw httpError("Stored LinkedIn notification is missing a usable leadGenFormResponse.", 400);
+  }
+
+  const accessToken = await getValidAccessToken(connection);
+  const leadResponse = await linkedinClient.getLeadFormResponse(responseId, accessToken);
+
+  if (leadResponse?.testLead === true) {
+    logger.info(`LinkedIn webhook: test lead received for client_id=${event.client_id}, form=${notification.leadGenForm}`);
+    return null;
+  }
+
+  return {
+    provider: PROVIDER,
+    clientId: event.client_id,
+    externalLeadId: event.external_lead_id,
+    externalFormId: formIdFromFormUrn(notification.leadGenForm),
+    submittedAt: leadResponse?.submittedAt ? new Date(leadResponse.submittedAt).toISOString() : new Date(notification.occurredAt * 1000).toISOString(),
+    rawFields: toRawFields(leadResponse?.formResponse),
+    sourceDisplayName: SOURCE_DISPLAY_NAME,
+    attribution: {
+      leadType: notification.leadType ?? null,
+      associatedEntity: notification.associatedEntity ?? null,
+      submitter: leadResponse?.submitter ?? null,
+    },
+    eventType: "lead",
+    rawPayload: { notification, leadResponse },
+  };
+}
+ingestionService.registerEnrichment(PROVIDER, enrichEvent);
+
+/**
  * POST /webhook/:token — the real inbound event delivery. Unlike Google
  * Ads, LinkedIn's notification payload carries no lead answer data (only
- * a pointer, `leadGenFormResponse`), so the actual fetch happens
- * synchronously in-request here — the same shape metaLeadService.
- * processLeadgenEvent already established for the identical "webhook
- * tells you a lead exists, a separate API call gets its data" situation.
+ * a pointer, `leadGenFormResponse`) — a separate API call is required to
+ * get it, which is exactly what enrichEvent above does.
+ *
+ * Persists the notification to integration_events BEFORE that fetch, not
+ * after — a process crash (or any error) between webhook receipt and a
+ * successful fetch used to leave NO trace of the notification anywhere;
+ * LinkedIn would eventually give up retrying and the lead would be
+ * silently lost. externalLeadId only depends on the notification itself
+ * (leadGenFormResponse + occurredAt), so it's computable before the
+ * fetch. From here, processing goes through the exact same
+ * processEvent()/claim/enrich/retry path a later recovery attempt would
+ * use — this handler itself no longer knows how to talk to LinkedIn's
+ * API at all; that's entirely enrichEvent's job now. Still answered
+ * synchronously (processEvent awaits the claim+enrich+create pipeline
+ * directly) — this doesn't add background/async processing, it only
+ * unifies the first attempt with every later retry.
  */
 async function handleWebhookEvent(token, rawBody, signatureHeader) {
   const connection = await integrationConnectionModel.findByProviderAndAccount(PROVIDER, token);
@@ -306,6 +383,10 @@ async function handleWebhookEvent(token, rawBody, signatureHeader) {
     return { httpStatus: 200, body: {} };
   }
 
+  if (!leadResponseIdFromUrn(payload.leadGenFormResponse)) {
+    return { httpStatus: 400, body: { message: "Unrecognized leadGenFormResponse URN." } };
+  }
+
   // LinkedIn's own recommended composite dedup key (leadsync.md
   // "Webhook Deduplication") — the leadGenFormResponse URN alone is
   // reused across register/unregister/re-register cycles for the same
@@ -313,59 +394,39 @@ async function handleWebhookEvent(token, rawBody, signatureHeader) {
   // delivery, fitting integration_events' UNIQUE(provider,
   // external_lead_id) exactly as-is.
   const externalLeadId = `${payload.leadGenFormResponse}_${payload.occurredAt}`;
-  const responseId = leadResponseIdFromUrn(payload.leadGenFormResponse);
-  if (!responseId) {
-    return { httpStatus: 400, body: { message: "Unrecognized leadGenFormResponse URN." } };
-  }
 
-  let accessToken;
-  let leadResponse;
-  try {
-    accessToken = await getValidAccessToken(connection);
-    leadResponse = await linkedinClient.getLeadFormResponse(responseId, accessToken);
-  } catch (err) {
-    if (err.status && err.status >= 400 && err.status < 500) {
-      // Permanent — an expired/revoked/under-permissioned connection will
-      // never succeed on retry. Log and acknowledge so LinkedIn doesn't
-      // keep re-delivering an event we can never complete; the Client
-      // Admin needs to reconnect, same "token_expired" outcome
-      // metaLeadService already treats as a 200-and-move-on.
-      logger.error(`LinkedIn webhook: could not fetch lead form response for client_id=${clientId}: ${err.message}`);
-      return { httpStatus: 200, body: {} };
+  // Durable persistence BEFORE any LinkedIn API call — see this
+  // function's own comment above. INSERT-IGNORE-safe (mirrors ingest()'s
+  // own race handling): a concurrent/duplicate delivery of this same
+  // notification just finds the row the other one created.
+  let event = await integrationEventModel.findByProviderAndExternalLeadId(PROVIDER, externalLeadId);
+  if (!event) {
+    event = await integrationEventModel.create({
+      clientId,
+      provider: PROVIDER,
+      externalLeadId,
+      eventType: "lead",
+      rawPayload: { notification: payload, needsEnrichment: true },
+    });
+    if (!event) {
+      event = await integrationEventModel.findByProviderAndExternalLeadId(PROVIDER, externalLeadId);
     }
-    // Transient (network/5xx) — no integration_events row exists yet to
-    // let ingestionService's own retry queue pick this up (the row is
-    // only created once a normalizedLead is ready, below), so the retry
-    // signal here is LinkedIn's own webhook-delivery layer instead.
-    logger.warn(`LinkedIn webhook: transient error fetching lead form response for client_id=${clientId}: ${err.message}`);
-    return { httpStatus: 500, body: { message: "Temporary error, please retry." } };
+  }
+  if (!event) {
+    return { httpStatus: 500, body: { message: "Could not record integration event." } };
   }
 
-  if (leadResponse?.testLead === true) {
-    logger.info(`LinkedIn webhook: test lead received for client_id=${clientId}, form=${payload.leadGenForm}`);
-    return { httpStatus: 200, body: {} };
-  }
+  // claim -> enrich (calls enrichEvent above) -> map -> createLead ->
+  // markProcessed, all inside processEvent — the identical path a retry
+  // or the stale-processing sweep would take later, run synchronously
+  // right now so LinkedIn's webhook POST gets an accurate status back.
+  const result = await ingestionService.processEvent(event.id);
 
-  const normalizedLead = {
-    provider: PROVIDER,
-    clientId,
-    externalLeadId,
-    externalFormId: formIdFromFormUrn(payload.leadGenForm),
-    submittedAt: leadResponse?.submittedAt ? new Date(leadResponse.submittedAt).toISOString() : new Date(payload.occurredAt * 1000).toISOString(),
-    rawFields: toRawFields(leadResponse?.formResponse),
-    sourceDisplayName: SOURCE_DISPLAY_NAME,
-    attribution: {
-      leadType: payload.leadType ?? null,
-      associatedEntity: payload.associatedEntity ?? null,
-      submitter: leadResponse?.submitter ?? null,
-    },
-    eventType: "lead",
-    rawPayload: { notification: payload, leadResponse },
-  };
-
-  const result = await ingestionService.ingest(normalizedLead);
-
-  if (result.outcome === "created" || result.outcome === "duplicate" || result.outcome === "skipped") {
+  if (!result || result.outcome === "skipped" || result.outcome === "created" || result.outcome === "duplicate") {
+    // "skipped" covers both a lost claim race against a concurrent
+    // duplicate delivery and an event that was already terminal
+    // (processed/duplicate/permanently failed) from an earlier delivery —
+    // either way, nothing left to do, acknowledge.
     return { httpStatus: 200, body: {} };
   }
   return result.retryable

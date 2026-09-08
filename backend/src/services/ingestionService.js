@@ -23,6 +23,25 @@ const MAX_ATTEMPTS = BACKOFF_MINUTES.length;
 const ACTOR_ROLE = "integration";
 
 /**
+ * Integration event recovery & operational hardening — a small, generic
+ * extension point for providers whose webhook notification alone doesn't
+ * carry a usable lead (LinkedIn today; Meta deliberately does NOT use
+ * this, see metaLeadService.js's own pipeline, kept separate and
+ * untouched). A provider registers ONE function here; ingestionService
+ * itself never knows or cares which provider needs it or why — the
+ * decision to persist a notification-only placeholder and mark it
+ * needsEnrichment is entirely the provider adapter's own (see
+ * linkedinLeadFormService.js). This is what lets the exact same
+ * claim/retry/stale-recovery machinery every provider already shares
+ * also recover a LinkedIn event whose enrichment fetch never completed —
+ * no separate queue, no LinkedIn-specific branch anywhere below.
+ */
+const enrichmentHooks = new Map();
+function registerEnrichment(provider, fn) {
+  enrichmentHooks.set(provider, fn);
+}
+
+/**
  * Schedules processing without making the caller wait on it — identical
  * shape to metaCapiService.scheduleProcessing (setImmediate for "now",
  * setTimeout for a backoff delay).
@@ -109,8 +128,36 @@ async function resolveFields(clientId, provider, externalFormId, rawFields) {
  * original payload.
  */
 async function processClaimedEvent(event) {
-  const normalizedLead = event.raw_payload || {};
+  let normalizedLead = event.raw_payload || {};
   try {
+    if (normalizedLead.needsEnrichment) {
+      const enrich = enrichmentHooks.get(event.provider);
+      if (!enrich) {
+        // Defensive only — every provider that ever sets needsEnrichment
+        // registers its own hook at module load (see
+        // linkedinLeadFormService.js); this should be unreachable, but
+        // failing loudly here beats silently processing an incomplete
+        // payload as if it had already been enriched.
+        throw new Error(`No enrichment hook registered for provider "${event.provider}".`);
+      }
+      const enriched = await enrich(event);
+      if (!enriched) {
+        // The provider determined, only once its own fetch completed,
+        // that this notification should be acknowledged without ever
+        // becoming a CRM lead (e.g. a test lead) — the same "processed,
+        // nothing more to do" terminal outcome a duplicate delivery
+        // already represents, just discovered a step later.
+        await integrationEventModel.markProcessed(event.id, { crmLeadId: null });
+        return { outcome: "created", eventId: event.id, crmLeadId: null, isDuplicate: false, unmapped: [] };
+      }
+      normalizedLead = enriched;
+      // Persist the now-complete payload so a LATER retry (if something
+      // below still fails, e.g. a mapping/validation error) doesn't need
+      // to re-enrich — the same "already fetched, just replay it" benefit
+      // every other provider's raw_payload already gives retries for free.
+      await integrationEventModel.updateRawPayload(event.id, normalizedLead);
+    }
+
     const { coreFields, customFields: mappedCustomFields, unmapped } = await resolveFields(
       event.client_id,
       event.provider,
@@ -136,7 +183,37 @@ async function processClaimedEvent(event) {
       }
     );
 
-    await integrationEventModel.markProcessed(event.id, { crmLeadId: lead.id });
+    // Deliberately its own try/catch, separate from everything above: the
+    // lead already exists at this point (committed by createLead's own
+    // transaction). A failure writing that fact back to this event row
+    // must NEVER fall into the catch below — handleProcessingFailure
+    // schedules a from-scratch retry, and nothing re-checks "did this
+    // event already produce a lead" before reprocessing (see ingest()'s
+    // own comment on why clientId/idempotency are only ever checked once,
+    // at intake) — a retry here would call createLead a SECOND time for
+    // the same external lead, producing a silent duplicate. markProcessed
+    // is a single idempotent-by-primary-key UPDATE with no external
+    // dependency, so a few immediate retries handle the realistic
+    // transient case (a momentary pool/connection blip); only if all of
+    // them fail is this logged for manual reconciliation and the row left
+    // in 'processing' — recoverStaleProcessing's own comment covers the
+    // (much rarer, and disclosed) residual risk that reintroduces.
+    let markedProcessed = false;
+    let markErr;
+    for (let attempt = 1; attempt <= 3 && !markedProcessed; attempt++) {
+      try {
+        await integrationEventModel.markProcessed(event.id, { crmLeadId: lead.id });
+        markedProcessed = true;
+      } catch (err) {
+        markErr = err;
+        if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+      }
+    }
+    if (!markedProcessed) {
+      logger.error(
+        `Ingestion: lead ${lead.id} was created for event ${event.id} (provider=${event.provider}, client_id=${event.client_id}) but markProcessed failed after 3 attempts — left as 'processing' for manual reconciliation rather than retried, to avoid creating a duplicate lead: ${markErr.message}`
+      );
+    }
     return { outcome: "created", eventId: event.id, crmLeadId: lead.id, isDuplicate: lead.isDuplicate, unmapped };
   } catch (err) {
     return handleProcessingFailure(event, err);
@@ -215,21 +292,72 @@ async function ingest(normalizedLead) {
  */
 async function processEvent(eventId) {
   const event = await integrationEventModel.findById(eventId);
-  if (!event) return;
+  // Integration event recovery & operational hardening: returns an
+  // explicit { outcome: "skipped" } rather than bare undefined for every
+  // "nothing to do" case — existing callers (scheduleProcessing's own
+  // fire-and-forget wrapper) never inspected the return value, so this is
+  // safe, but a NEW caller now does: linkedinLeadFormService.
+  // handleWebhookEvent calls this directly (instead of ingest()) so the
+  // exact same claim/enrich/process path handles both the synchronous
+  // first attempt and every later retry — it needs a real HTTP status to
+  // give LinkedIn back, which means it needs a real outcome, not undefined.
+  if (!event) return { outcome: "skipped", eventId };
   const claimed = await integrationEventModel.claimForProcessing(eventId);
-  if (!claimed) return; // already processed, already permanently failed, or not yet due
+  if (!claimed) return { outcome: "skipped", eventId }; // already processed, already permanently failed, claimed by someone else, or not yet due
   return processClaimedEvent(event);
 }
 
 /**
+ * Super Admin manual "Retry Now" — identical shape to processEvent above,
+ * the ONE difference being which model function performs the claim
+ * (claimForManualRetry, not claimForProcessing — see that function's own
+ * comment for why). Everything after the claim is the exact same
+ * processClaimedEvent every other path already uses: the enrichment hook
+ * runs again for a provider that needs it (LinkedIn), Google/IndiaMART's
+ * already-complete raw_payload is replayed directly, and a
+ * successfully-created lead is recorded through the same markProcessed
+ * call — there is no second retry/lead-creation path here. The caller
+ * (integrationMonitoringService) is responsible for the eligibility
+ * pre-check that turns a lost claim race into a friendly message instead
+ * of a bare "skipped".
+ */
+async function retryEvent(eventId) {
+  const event = await integrationEventModel.findById(eventId);
+  if (!event) return { outcome: "not_found", eventId };
+  const claimed = await integrationEventModel.claimForManualRetry(eventId);
+  if (!claimed) return { outcome: "skipped", eventId };
+  return processClaimedEvent(event);
+}
+
+// Production reliability audit finding: claimForProcessing's own WHERE
+// clause can only ever move a row OUT of 'processing' (into 'processed'/
+// 'duplicate'/'failed') — nothing already in this codebase can reclaim a
+// row that's stuck IN 'processing', including this same startup sweep,
+// because a crash mid-processClaimedEvent (or, before this audit, a
+// markProcessed failure — see processClaimedEvent's own comment) leaves
+// no 'received'/due-'failed' row for findDueForProcessing to find at all.
+// 15 minutes is comfortably above how long a real processClaimedEvent run
+// ever takes (a handful of indexed queries, no long-running work) — never
+// mistakes a genuinely in-flight row for an abandoned one under normal
+// operation.
+const STALE_PROCESSING_MINUTES = 15;
+
+/**
  * Recovers from a process restart — any event left `received` (logged
  * but never got its post-commit setImmediate, e.g. the process died
- * right after) or `failed` with a due `next_attempt_at` (its setTimeout
- * was lost along with the old process) gets picked back up. Identical
- * role to metaCapiService.runStartupSweep — call this once at boot.
+ * right after), `failed` with a due `next_attempt_at` (its setTimeout was
+ * lost along with the old process), or stuck `processing` (see
+ * STALE_PROCESSING_MINUTES's own comment) gets picked back up. Identical
+ * role to metaCapiService.runStartupSweep — call this once at boot, and
+ * safe to call repeatedly (idempotent) if also registered as a recurring
+ * job (see jobs/index.js) — the recurring case is what actually covers a
+ * stale-processing row detected hours into a long-running process, not
+ * just at its next restart.
  */
 async function runStartupSweep() {
   try {
+    const recovered = await integrationEventModel.recoverStaleProcessing(STALE_PROCESSING_MINUTES);
+    if (recovered) logger.warn(`Ingestion: recovered ${recovered} event(s) stuck in "processing" for over ${STALE_PROCESSING_MINUTES} minutes.`);
     const ids = await integrationEventModel.findDueForProcessing(200);
     ids.forEach((id) => scheduleProcessing(id));
     if (ids.length) logger.info(`Ingestion: startup sweep picked up ${ids.length} due event(s).`);
@@ -238,4 +366,4 @@ async function runStartupSweep() {
   }
 }
 
-module.exports = { ingest, processEvent, scheduleProcessing, runStartupSweep, ACTOR_ROLE };
+module.exports = { ingest, processEvent, retryEvent, scheduleProcessing, runStartupSweep, registerEnrichment, ACTOR_ROLE };

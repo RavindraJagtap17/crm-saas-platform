@@ -133,6 +133,15 @@ const config = {
     // cycle (userService.js's INVITATION_EXPIRY_DAYS), so hourly polling
     // is comfortably granular here too.
     employeeInvitationExpiryJobIntervalMs: parseInt(process.env.EMPLOYEE_INVITATION_EXPIRY_JOB_INTERVAL_MS, 10) || 3600000,
+    // Unified integrations audit finding — re-runs ingestionService.
+    // runStartupSweep() periodically, not just at boot, so a stuck
+    // 'processing' row (or a 'received'/due-'failed' row whose in-process
+    // timer was lost some other way) is recovered within minutes of a
+    // long-running process rather than only at its next restart. 15
+    // minutes matches ingestionService's own STALE_PROCESSING_MINUTES
+    // threshold — no reason to check more often than a row could even
+    // become eligible.
+    integrationEventsSweepJobIntervalMs: parseInt(process.env.INTEGRATION_EVENTS_SWEEP_JOB_INTERVAL_MS, 10) || 900000,
   },
 };
 

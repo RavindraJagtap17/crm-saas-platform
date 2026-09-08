@@ -216,4 +216,17 @@ export const superAdminApi = {
   // Client added.
   getClientLicensePrice: () => api.get("/api/super-admin/client-license-price"),
   upsertClientLicensePrice: (body) => api.put("/api/super-admin/client-license-price", body),
+  // Platform-wide integration event monitoring — query: { page, pageSize,
+  // provider, status, agencyId, clientId, search, from, to }, all
+  // optional server-side filters (see integrationMonitoringValidators.js).
+  // Response bundles the filtered list, its pagination, AND its matching
+  // summary counts in one call.
+  listIntegrationEvents: (query) => api.get(`/api/super-admin/integration-events${qs(query)}`),
+  getIntegrationEvent: (id) => api.get(`/api/super-admin/integration-events/${id}`),
+  // No request body — the event id is the only thing the browser
+  // contributes; eligibility/claim/provider resolution all happen
+  // server-side. Response: { result: SUCCESS|IN_PROGRESS|REJECTED|FAILED, message, event }.
+  retryIntegrationEvent: (id) => api.post(`/api/super-admin/integration-events/${id}/retry`),
+  // Read-only — who manually retried this event, when, and what happened.
+  getRetryHistory: (id) => api.get(`/api/super-admin/integration-events/${id}/retry-history?pageSize=50`),
 };

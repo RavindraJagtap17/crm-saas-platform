@@ -334,6 +334,24 @@ const EVENT_STATUS_LABEL = {
   failed: "Failed",
 };
 
+// Integration event recovery & operational hardening — a Client Admin
+// should be able to tell "stuck or repeatedly failing" apart from
+// "normal" without database access (attempts/nextAttemptAt were already
+// returned by the API; this is the first place either is actually shown).
+// A 'received' row with attempts > 0 was reset by the stale-processing
+// sweep after getting stuck — not a fabricated status, just surfacing
+// what already happened.
+function eventStatusDetail(ev) {
+  if (ev.status === "failed" && ev.attempts) {
+    const next = ev.nextAttemptAt ? `, next retry ${formatDateTime(ev.nextAttemptAt)}` : "";
+    return ` <span class="text-tertiary text-sm">(${ev.attempts} attempt${ev.attempts === 1 ? "" : "s"}${next})</span>`;
+  }
+  if (ev.status === "received" && ev.attempts) {
+    return ` <span class="text-tertiary text-sm">(recovered — ${ev.attempts} prior attempt${ev.attempts === 1 ? "" : "s"})</span>`;
+  }
+  return "";
+}
+
 async function renderEventsCard(cardEl) {
   cardEl.innerHTML = `<div class="card-body"><div class="skeleton skeleton-row"></div></div>`;
   let events;
@@ -366,7 +384,7 @@ async function renderEventsCard(cardEl) {
               <td data-label="External lead ID"><code class="text-sm">${escapeHtml(ev.externalLeadId)}</code></td>
               <td data-label="Status"><span class="badge ${EVENT_STATUS_BADGE[ev.status] || "badge-neutral"}">${
                 EVENT_STATUS_LABEL[ev.status] || ev.status
-              }</span>${ev.status === "failed" && ev.attempts ? ` <span class="text-tertiary text-sm">(${ev.attempts} attempt${ev.attempts === 1 ? "" : "s"})</span>` : ""}</td>
+              }</span>${eventStatusDetail(ev)}</td>
               <td data-label="CRM lead">${ev.crmLeadId ? `<a href="./lead-detail.html?id=${ev.crmLeadId}">#${ev.crmLeadId}</a>` : "—"}</td>
               <td data-label="Error" class="text-sm text-tertiary">${ev.lastError ? escapeHtml(ev.lastError) : "—"}</td>
             </tr>`

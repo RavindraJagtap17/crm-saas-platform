@@ -1,5 +1,6 @@
 const superAdminService = require("../services/superAdminService");
 const clientLicensePriceService = require("../services/clientLicensePriceService");
+const integrationMonitoringService = require("../services/integrationMonitoringService");
 const asyncHandler = require("../utils/asyncHandler");
 
 const listTenants = asyncHandler(async (req, res) => {
@@ -51,6 +52,34 @@ const upsertClientLicensePrice = asyncHandler(async (req, res) => {
   res.json({ price });
 });
 
+// ---- Platform-wide integration event monitoring ----
+// Authorization is entirely the router's own requireRole("super_admin")
+// gate (see superAdmin.routes.js) — everything in req.query below is
+// search criteria only, never trusted to decide WHOSE data comes back
+// (see integrationMonitoringValidators.js's own comment).
+const listIntegrationEvents = asyncHandler(async (req, res) => {
+  res.json(await integrationMonitoringService.listEvents(req.query));
+});
+
+const getIntegrationEvent = asyncHandler(async (req, res) => {
+  res.json(await integrationMonitoringService.getEventDetail(req.params.id));
+});
+
+// Manual "Retry Now" — takes nothing from req.body at all; the event id
+// (validated as a positive integer by validateIdParam) is the ONLY input
+// from the browser. Everything else (provider, client, eligibility) is
+// resolved server-side from the persisted event row itself.
+const retryIntegrationEvent = asyncHandler(async (req, res) => {
+  res.json(await integrationMonitoringService.retryEvent(req.params.id, req.user.sub));
+});
+
+// Read-only — who manually retried this event, when, and what happened.
+// Reuses the SAME audit_logs rows retryIntegrationEvent above writes;
+// req.query only ever supplies page/pageSize (see parsePagination).
+const getIntegrationEventRetryHistory = asyncHandler(async (req, res) => {
+  res.json(await integrationMonitoringService.getRetryHistory(req.params.id, req.query));
+});
+
 module.exports = {
   listTenants,
   getTenant,
@@ -61,4 +90,8 @@ module.exports = {
   overview,
   getClientLicensePrice,
   upsertClientLicensePrice,
+  listIntegrationEvents,
+  getIntegrationEvent,
+  retryIntegrationEvent,
+  getIntegrationEventRetryHistory,
 };

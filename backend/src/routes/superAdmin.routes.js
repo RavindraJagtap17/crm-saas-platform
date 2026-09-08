@@ -39,4 +39,25 @@ router.get(
 router.get("/client-license-price", controller.getClientLicensePrice);
 router.put("/client-license-price", controller.upsertClientLicensePrice);
 
+// Platform-wide integration event monitoring — deliberately combines the
+// filtered list AND its matching summary counts into one response (same
+// "bundle related data in one call" shape /overview above already uses)
+// rather than a separate /summary endpoint, since both would otherwise
+// need to duplicate the exact same query params on every request.
+// :id is intentionally NOT nested under /tenants/:tenantId the way
+// getClient is — Super Admin identifies an event by its own id and looks
+// UP the Agency/Client from there (see integrationMonitoringService),
+// mirroring how the query filters themselves work (agencyId/clientId are
+// optional search criteria, not a required path).
+router.get("/integration-events", controller.listIntegrationEvents);
+router.get("/integration-events/:id", validateIdParam(), controller.getIntegrationEvent);
+// Manual "Retry Now" — nested under the event id, matching this
+// resource's own convention (:id identifies the event; there is no
+// request body). See integrationMonitoringService.retryEvent for the
+// eligibility/claim/audit logic — this route contributes no logic of its
+// own beyond identifying the event and the acting Super Admin.
+router.post("/integration-events/:id/retry", validateIdParam(), controller.retryIntegrationEvent);
+// Retry History — read-only, same :id-nested shape as retry above.
+router.get("/integration-events/:id/retry-history", validateIdParam(), controller.getIntegrationEventRetryHistory);
+
 module.exports = router;
