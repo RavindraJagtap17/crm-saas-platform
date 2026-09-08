@@ -9,5 +9,6 @@ const router = express.Router();
 
 router.use(authenticate, tenantScope, requireActiveTenant, requireRole("client_admin", "client_employee"));
 router.get("/summary", controller.summary);
+router.get("/follow-up-counts", controller.followUpCounts);
 
 module.exports = router;

@@ -72,4 +72,18 @@ async function summaryForEmployee(clientId, userId) {
   };
 }
 
-module.exports = { summaryForAdmin, summaryForEmployee };
+// Follow-up topbar indicator — the same leadFollowUpModel.dashboardCounts
+// call summaryForAdmin/summaryForEmployee above already make, exposed on
+// its own lightweight endpoint so the shell (mounted on EVERY page, not
+// just the dashboard) doesn't have to pull the whole dashboard summary
+// (lead totals, source breakdown, 6 months of volume, status breakdown,
+// today's follow-up list) just to show two numbers. No new query logic —
+// same scoping rule as summaryForEmployee: client_employee is restricted
+// to their own assigned follow-ups, client_admin gets the client-wide count.
+async function followUpCounts(clientId, role, userId) {
+  const scope = role === "client_employee" ? { restrictToUserId: userId } : {};
+  const { overdueCount, todayCount } = await leadFollowUpModel.dashboardCounts(clientId, scope);
+  return { overdue: overdueCount, dueToday: todayCount };
+}
+
+module.exports = { summaryForAdmin, summaryForEmployee, followUpCounts };

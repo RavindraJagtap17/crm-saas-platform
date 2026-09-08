@@ -1,5 +1,6 @@
 import { getCurrentUser, logout } from "../session.js";
 import { initials } from "./ui.js";
+import { dashboardApi } from "../api/resources.js";
 
 /**
  * B2B2C restructure: navigation is rebuilt per role from scratch, not
@@ -41,6 +42,7 @@ const NAV = {
       items: [
         { key: "dashboard", label: "Dashboard", href: "/public/admin/dashboard.html", icon: "▤" },
         { key: "leads", label: "Leads", href: "/public/admin/leads.html", icon: "☍" },
+        { key: "follow-ups", label: "Follow-ups", href: "/public/admin/follow-ups.html", icon: "⏰" },
       ],
     },
     {
@@ -66,6 +68,7 @@ const NAV = {
       items: [
         { key: "dashboard", label: "Dashboard", href: "/public/employee/dashboard.html", icon: "▤" },
         { key: "leads", label: "Leads", href: "/public/employee/leads.html", icon: "☍" },
+        { key: "follow-ups", label: "Follow-ups", href: "/public/employee/follow-ups.html", icon: "⏰" },
       ],
     },
   ],
@@ -140,6 +143,78 @@ function redirectIfBlocked(user, allowBlocked) {
   return true;
 }
 
+// Follow-up due/overdue topbar indicator (§ CRM feature-gap audit — the
+// dashboard already computes these counts via leadFollowUpModel.
+// dashboardCounts; this reuses that through the new lightweight
+// GET /api/dashboard/follow-up-counts endpoint rather than duplicating
+// any calculation here). Only these two roles have a client-scoped
+// follow-up worklist at all — Agency Admin/Super Admin operate a level
+// above individual leads and never see this.
+const FOLLOWUP_ROLES = new Set(["client_admin", "client_employee"]);
+const FOLLOWUP_LIST_HREF = { client_admin: "/public/admin/follow-ups.html", client_employee: "/public/employee/follow-ups.html" };
+
+function followUpIndicatorHtml(role) {
+  return `
+    <a class="followup-indicator" id="followup-indicator" href="${FOLLOWUP_LIST_HREF[role]}" title="Follow-ups">
+      <span aria-hidden="true">⏰</span>
+      <span>Follow-ups</span>
+      <span id="followup-indicator-counts"><span class="skeleton skeleton-text" style="width:56px;height:14px;display:inline-block;vertical-align:middle"></span></span>
+    </a>`;
+}
+
+/**
+ * Fetches the current overdue/due-today counts and fills them into the
+ * indicator already in the DOM (rendered synchronously by mountShell, see
+ * below) — never blocks the page render on this network call. On failure,
+ * hides the indicator entirely rather than showing a stale or fake count
+ * (Phase 9 of the feature spec: don't break the shell, don't lie about data).
+ */
+async function loadFollowUpIndicator() {
+  const el = document.getElementById("followup-indicator");
+  if (!el) return; // not this role, or shell not mounted with the indicator
+  try {
+    const { overdue, dueToday } = await dashboardApi.followUpCounts();
+    const countsEl = document.getElementById("followup-indicator-counts");
+    if (!countsEl) return; // page navigated away while the request was in flight
+    // Deep-links straight to whichever view is most urgent — matches the
+    // exact same "view" values the Follow-ups list page itself accepts
+    // (admin-follow-ups.js/employee-follow-ups.js VIEWS), never a new
+    // filtering scheme invented just for this link.
+    const base = el.getAttribute("href").split("?")[0];
+    if (overdue === 0 && dueToday === 0) {
+      countsEl.innerHTML = `<span class="text-tertiary text-xs">No follow-ups due</span>`;
+      el.title = "No follow-ups due";
+      el.href = base;
+    } else {
+      countsEl.innerHTML = `
+        ${overdue > 0 ? `<span class="badge badge-danger">${overdue} overdue</span>` : ""}
+        ${dueToday > 0 ? `<span class="badge badge-warning">${dueToday} due today</span>` : ""}`;
+      el.title = `Overdue: ${overdue}\nDue today: ${dueToday}`;
+      el.href = `${base}?view=${overdue > 0 ? "overdue" : "today"}`;
+    }
+  } catch (err) {
+    // Quiet by design — this is a passive background indicator, not a
+    // user-initiated action, so a toast would be noise. Hiding it means a
+    // transient failure never shows a stale/fake count.
+    console.error("Follow-up indicator failed to load:", err.message);
+    el.style.display = "none";
+  }
+}
+
+/**
+ * Exported so any page that mutates a follow-up WITHOUT a full page
+ * navigation (today, only followUpPanel.js's schedule/reschedule/complete/
+ * cancel actions on the lead-detail pages) can refresh the topbar count in
+ * place — everywhere else, a normal `<a>` page navigation already remounts
+ * the shell and re-fetches fresh, matching this app's existing no-SPA,
+ * reload-per-navigation architecture (see this file's own module comment).
+ * Safe to call from a role that has no indicator (loadFollowUpIndicator
+ * itself no-ops when the element isn't present).
+ */
+export function refreshFollowUpIndicator() {
+  return loadFollowUpIndicator();
+}
+
 /**
  * Renders the sidebar/topbar shell for the current role into #shell-root
  * and returns the empty #page-content element the page should render its
@@ -212,7 +287,7 @@ export function mountShell({ activeKey, title, allowBlocked = false }) {
             <button class="menu-toggle" id="menu-toggle" aria-label="Open navigation" aria-expanded="false">☰</button>
             <h1 class="topbar-title">${title}</h1>
           </div>
-          <div class="topbar-actions" id="topbar-actions"></div>
+          <div class="topbar-actions" id="topbar-actions">${FOLLOWUP_ROLES.has(role) ? followUpIndicatorHtml(role) : ""}</div>
         </header>
         <main class="page-content" id="page-content" tabindex="-1"></main>
       </div>
@@ -220,6 +295,7 @@ export function mountShell({ activeKey, title, allowBlocked = false }) {
   `;
 
   document.getElementById("logout-btn").addEventListener("click", logout);
+  if (FOLLOWUP_ROLES.has(role)) loadFollowUpIndicator();
 
   const shell = document.getElementById("app-shell");
   const overlay = document.getElementById("nav-overlay");

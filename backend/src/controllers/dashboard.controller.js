@@ -9,4 +9,11 @@ const summary = asyncHandler(async (req, res) => {
   res.json(data);
 });
 
-module.exports = { summary };
+// Topbar follow-up indicator — req.clientId comes from tenantScope (JWT-
+// derived), req.user.role/sub from the verified token; nothing here is
+// ever taken from the browser beyond the already-authenticated request.
+const followUpCounts = asyncHandler(async (req, res) => {
+  res.json(await dashboardService.followUpCounts(req.clientId, req.user.role, req.user.sub));
+});
+
+module.exports = { summary, followUpCounts };

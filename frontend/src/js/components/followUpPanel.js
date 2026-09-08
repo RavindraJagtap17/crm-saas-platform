@@ -2,6 +2,7 @@ import { followUpsApi, leadsApi } from "../api/resources.js";
 import { openModal, confirmDialog } from "./modal.js";
 import { toastSuccess, toastError } from "./toast.js";
 import { escapeHtml, formatDateTime, setButtonLoading, emptyState, followUpStatusBadge } from "./ui.js";
+import { refreshFollowUpIndicator } from "./shell.js";
 
 // Splits a stored ISO instant back into the <input type="date">/
 // <input type="time"> values a form needs, in the VIEWER's own local
@@ -76,7 +77,11 @@ function scheduleFormHtml({ currentUser, assignableUsers, defaults }) {
     </form>`;
 }
 
-function openScheduleModal({ title, currentUser, assignableUsers, defaults, onSubmit }) {
+// Exported so the Follow-ups list page (admin-follow-ups.js/
+// employee-follow-ups.js) can reuse the exact same reschedule modal —
+// date/time-picker combining, the employee-locked-to-self assignee field —
+// instead of re-implementing it for a second surface.
+export function openScheduleModal({ title, currentUser, assignableUsers, defaults, onSubmit }) {
   openModal({
     title,
     bodyHtml: scheduleFormHtml({ currentUser, assignableUsers, defaults }),
@@ -170,6 +175,7 @@ export async function renderFollowUpPanel(container, { leadId, currentUser, assi
           await leadsApi.createFollowUp(leadId, body);
           toastSuccess("Follow-up scheduled.");
           await refresh();
+          refreshFollowUpIndicator();
         },
       });
     });
@@ -189,6 +195,7 @@ export async function renderFollowUpPanel(container, { leadId, currentUser, assi
             await followUpsApi.update(id, body);
             toastSuccess("Follow-up rescheduled.");
             await refresh();
+            refreshFollowUpIndicator();
           },
         });
       })
@@ -205,6 +212,7 @@ export async function renderFollowUpPanel(container, { leadId, currentUser, assi
           await followUpsApi.complete(btn.dataset.complete);
           toastSuccess("Follow-up completed.");
           await refresh();
+          refreshFollowUpIndicator();
         } catch (err) {
           toastError(err.message);
         }
@@ -218,6 +226,7 @@ export async function renderFollowUpPanel(container, { leadId, currentUser, assi
           await followUpsApi.cancel(btn.dataset.cancelFu);
           toastSuccess("Follow-up cancelled.");
           await refresh();
+          refreshFollowUpIndicator();
         } catch (err) {
           toastError(err.message);
         }

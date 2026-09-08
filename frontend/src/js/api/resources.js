@@ -112,6 +112,10 @@ export const customFieldsApi = {
 
 export const dashboardApi = {
   summary: () => api.get("/api/dashboard/summary"),
+  // Topbar follow-up indicator — { overdue, dueToday }. Lighter than
+  // summary() above (no lead totals/breakdowns/monthly volume), since the
+  // shell fetches this on every page, not just the dashboard.
+  followUpCounts: () => api.get("/api/dashboard/follow-up-counts"),
 };
 
 export const webFormsApi = {
