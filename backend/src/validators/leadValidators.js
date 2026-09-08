@@ -26,6 +26,16 @@ const PROTECTED_FIELDS = [
   "assigned_to",
   "metaLeadId",
   "meta_lead_id",
+  // Generic Lead Ingestion Foundation — same protection as metaLeadId
+  // above, for the future provider-neutral equivalent. leadService.
+  // createLead doesn't currently write these anywhere (a non-Meta
+  // provider's idempotency lives in integration_events, one layer up —
+  // see ingestionService.js), but stripping them here unconditionally,
+  // regardless of what a future wiring looks like, means a normal Client
+  // Admin/Employee request can never inject them either way.
+  "provider",
+  "externalLeadId",
+  "external_lead_id",
   "convertedAt",
   "converted_at",
 ];

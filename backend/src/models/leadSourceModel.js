@@ -78,4 +78,19 @@ async function findOrCreateMetaSource(clientId) {
   return create(clientId, { name: META_SOURCE_NAME, type: META_SOURCE_TYPE });
 }
 
-module.exports = { list, findById, findByName, create, update, findOrCreateManualSource, findOrCreateMetaSource };
+// Generic Lead Ingestion Foundation — the same lazy find-or-create shape
+// as findOrCreateMetaSource, generalized for any future provider
+// (Google Ads, LinkedIn, IndiaMART, ...) instead of adding one more
+// hardcoded findOrCreateXSource per provider. `displayName` lets the
+// caller use a human-friendly label (e.g. "Google Ads") while `provider`
+// (e.g. "google") stays the stable, machine-matched `type`/lookup key —
+// mirrors META_SOURCE_NAME/META_SOURCE_TYPE's own name-vs-type split.
+// Meta itself keeps using its own dedicated findOrCreateMetaSource above,
+// completely untouched.
+async function findOrCreateForProvider(clientId, provider, displayName) {
+  const existing = await findByName(clientId, displayName);
+  if (existing) return existing;
+  return create(clientId, { name: displayName, type: provider });
+}
+
+module.exports = { list, findById, findByName, create, update, findOrCreateManualSource, findOrCreateMetaSource, findOrCreateForProvider };

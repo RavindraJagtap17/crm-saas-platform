@@ -2,6 +2,7 @@ const app = require("./app");
 const config = require("./config");
 const logger = require("./utils/logger");
 const metaCapiService = require("./services/metaCapiService");
+const ingestionService = require("./services/ingestionService");
 const { scheduler, registerAllJobs } = require("./jobs");
 
 const server = app.listen(config.port, () => {
@@ -10,6 +11,12 @@ const server = app.listen(config.port, () => {
   // process exiting (queued but never sent, or a backoff timer that died
   // with the old process) — see metaCapiService.runStartupSweep's comment.
   metaCapiService.runStartupSweep();
+  // Generic Lead Ingestion Foundation — same recovery, one level generic:
+  // any integration_events row left `received` or a due `failed` retry
+  // when the previous process exited. No provider uses this yet (Google
+  // Ads is the next task), so this is a no-op until then — safe to enable
+  // now regardless, exactly like the scheduler infra below already is.
+  ingestionService.runStartupSweep();
 
   // Step 9A: scheduler infrastructure only — registerAllJobs() is
   // currently empty (see jobs/index.js), so enabling this today starts a

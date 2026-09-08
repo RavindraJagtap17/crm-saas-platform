@@ -15,6 +15,9 @@ const superAdminRoutes = require("./superAdmin.routes");
 const webFormRoutes = require("./webForm.routes");
 const publicFormRoutes = require("./publicForm.routes");
 const metaRoutes = require("./meta.routes");
+const googleLeadFormRoutes = require("./googleLeadForm.routes");
+const linkedinLeadFormRoutes = require("./linkedinLeadForm.routes");
+const integrationRoutes = require("./integration.routes");
 const razorpayWebhookRoutes = require("./razorpayWebhook.routes");
 
 const router = express.Router();
@@ -35,6 +38,19 @@ router.use("/api/super-admin", superAdminRoutes);
 router.use("/api/web-forms", webFormRoutes);
 router.use("/api/public/lead-form", publicFormRoutes);
 router.use("/api/meta", metaRoutes);
+// Mounted BEFORE the generic /api/integrations router below — Express
+// tries mounted routers in registration order, so /connect and
+// /webhook/:token (defined only here) are handled by this router, while
+// /connection, /mappings, and /events for provider="google" fall through
+// unmatched to the generic router beneath it (see googleLeadForm.routes.js's
+// own closing comment).
+router.use("/api/integrations/google", googleLeadFormRoutes);
+// Same fallthrough design as Google above — /connect, /oauth/callback,
+// and /webhook/:token are handled here; /connection, /mappings, and
+// /events for provider="linkedin" fall through unmatched to the generic
+// router beneath it.
+router.use("/api/integrations/linkedin", linkedinLeadFormRoutes);
+router.use("/api/integrations", integrationRoutes);
 router.use("/api/razorpay/webhook", razorpayWebhookRoutes);
 
 // Future route namespaces (added in later steps, per the approved spec §22):

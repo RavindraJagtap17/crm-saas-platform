@@ -31,6 +31,19 @@ function scopeFor(_actor) {
   return {};
 }
 
+// Generic Lead Ingestion Foundation — replaces the old hardcoded
+// `actor.role === "meta_integration"` string comparison with a small,
+// extensible set. Every member is a SYNTHETIC role: never issued by
+// signAccessToken (see jwt.js), so no authenticated HTTP request —
+// Client Admin, Client Employee, anyone — can ever carry one; only
+// trusted internal service code sets `actor.role` to one of these,
+// exactly as metaLeadService already does for "meta_integration".
+// "integration" is the one new addition, used by ingestionService.js for
+// every future non-Meta provider — Meta's own call site is completely
+// untouched (still passes "meta_integration", still hits the same
+// metaLeadId branch below, unchanged).
+const TRUSTED_INTEGRATION_ACTOR_ROLES = new Set(["meta_integration", "integration"]);
+
 function serializeLead(row) {
   if (!row) return null;
   return {
@@ -104,21 +117,27 @@ async function createLead(clientId, actor, body) {
       statusId: null,
       assignedTo: null, // §C / §I: new leads always start unassigned
       customFields,
-      // Step 10 security fix: only ever set for the one trusted internal
-      // caller (metaLeadService, which passes actor.role === "meta_integration"
-      // — a synthetic role no authenticated request can ever carry, since
-      // it's never issued by signAccessToken). Gating on `actor.role`
-      // rather than on `body`'s shape is the actual fix — createLead IS
-      // reachable directly from client input (POST /api/leads passes
-      // req.body straight through, see lead.controller.js), so the
-      // previous "never client-writable" premise was false: any
-      // authenticated client user could set an arbitrary metaLeadId,
-      // which (via leads.meta_lead_id's platform-wide, non-client-scoped
-      // UNIQUE index — required so Step 7's webhook idempotency check
-      // works across clients) let Client A pre-claim Client B's Meta
-      // leadgen_id and silently swallow that lead when Meta's webhook
-      // later delivered it — see the Step 10 regression test.
-      metaLeadId: actor?.role === "meta_integration" && typeof body?.metaLeadId === "string" && body.metaLeadId.trim() ? body.metaLeadId.trim() : undefined,
+      // Step 10 security fix, now provider-neutral: only ever set for a
+      // trusted internal caller (TRUSTED_INTEGRATION_ACTOR_ROLES above).
+      // Gating on `actor.role` rather than on `body`'s shape is the
+      // actual fix — createLead IS reachable directly from client input
+      // (POST /api/leads passes req.body straight through, see
+      // lead.controller.js), so "never client-writable" would otherwise
+      // be false: any authenticated client user could set an arbitrary
+      // metaLeadId, which (via leads.meta_lead_id's platform-wide,
+      // non-client-scoped UNIQUE index — required so the Meta webhook's
+      // own idempotency check works across clients) would let Client A
+      // pre-claim Client B's Meta leadgen_id and silently swallow that
+      // lead when Meta's webhook later delivered it. Still exactly the
+      // one column that exists (leads.meta_lead_id) — a non-Meta
+      // provider's own external id is never written here at all; that
+      // idempotency lives one layer up, in integration_events (see
+      // ingestionService.js), which is what actually gates whether this
+      // function is even called a second time for the same external lead.
+      metaLeadId:
+        TRUSTED_INTEGRATION_ACTOR_ROLES.has(actor?.role) && typeof body?.metaLeadId === "string" && body.metaLeadId.trim()
+          ? body.metaLeadId.trim()
+          : undefined,
       isDuplicate,
       duplicateOfLeadId,
     });
@@ -280,4 +299,5 @@ module.exports = {
   assignLead,
   serializeLead,
   scopeFor,
+  TRUSTED_INTEGRATION_ACTOR_ROLES,
 };

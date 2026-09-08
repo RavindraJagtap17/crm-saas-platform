@@ -96,6 +96,21 @@ const config = {
     redirectUri: process.env.META_REDIRECT_URI || `${process.env.APP_URL || "http://localhost:4000"}/api/meta/oauth/callback`,
   },
 
+  // Deliberately NOT in REQUIRED above, unlike meta.* — this integration
+  // is opt-in per deployment (LinkedIn's Lead Sync API needs a separate
+  // program approval most environments won't have yet), and every other
+  // integration/route in this app must keep booting fine without it. A
+  // clientId/clientSecret check happens lazily, only when the LinkedIn
+  // connect flow is actually invoked (see linkedinLeadFormService.js).
+  linkedin: {
+    clientId: process.env.LINKEDIN_CLIENT_ID,
+    clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+    redirectUri: process.env.LINKEDIN_REDIRECT_URI || `${process.env.APP_URL || "http://localhost:4000"}/api/integrations/linkedin/oauth/callback`,
+    // YYYYMM per LinkedIn's own "Linkedin-Version" header requirement —
+    // see https://learn.microsoft.com/en-us/linkedin/marketing/lead-sync/leadsync.
+    apiVersion: process.env.LINKEDIN_API_VERSION || "202608",
+  },
+
   razorpay: {
     keyId: process.env.RAZORPAY_KEY_ID,
     keySecret: process.env.RAZORPAY_KEY_SECRET,
