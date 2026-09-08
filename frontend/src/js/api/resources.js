@@ -136,6 +136,26 @@ export const metaApi = {
   capiEvents: () => api.get("/api/meta/capi/events"),
 };
 
+// LinkedIn Lead Gen Forms — OAuth-based, unlike Meta's own connect flow
+// this needs ownerType/ownerId supplied up front (see linkedinLeadFormService.
+// beginConnect on the backend for why: LinkedIn's Lead Sync API has no
+// "list my accounts" endpoint to auto-discover from). mappings/events reuse
+// the exact same generic /api/integrations/:provider/* shape Google Ads
+// already falls through to — same response shapes (snake_case mapping
+// rows, camelCase event rows) as that generic controller returns for any
+// provider.
+export const linkedinApi = {
+  connect: (ownerType, ownerId) => api.get(`/api/integrations/linkedin/connect${qs({ ownerType, ownerId })}`),
+  connection: () => api.get("/api/integrations/linkedin/connection"),
+  disconnect: () => api.delete("/api/integrations/linkedin/connection"),
+  forms: () => api.get("/api/integrations/linkedin/forms"),
+  mappings: (externalFormId) => api.get(`/api/integrations/linkedin/mappings${qs({ externalFormId })}`),
+  createMapping: (body) => api.post("/api/integrations/linkedin/mappings", body),
+  updateMapping: (id, body) => api.patch(`/api/integrations/linkedin/mappings/${id}`, body),
+  removeMapping: (id) => api.delete(`/api/integrations/linkedin/mappings/${id}`),
+  events: (limit) => api.get(`/api/integrations/linkedin/events${qs({ limit })}`),
+};
+
 export const superAdminApi = {
   overview: () => api.get("/api/super-admin/overview"),
   // query: { q, status } — both optional, server-side filtered (see

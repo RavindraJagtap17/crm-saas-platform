@@ -248,6 +248,23 @@ async function getValidAccessToken(connection) {
 }
 
 /**
+ * GET /forms — lets the Client Admin pick a form to configure mappings
+ * for, instead of having to already know its numeric id (frontend gap
+ * discovered building the LinkedIn integration page: unlike Meta's own
+ * GET /api/meta/forms, this integration originally had no equivalent).
+ * Same shape/reasoning as metaIntegrationService's forms listing: requires
+ * a live connection, throws a clear 400 otherwise rather than an empty list.
+ */
+async function listForms(clientId) {
+  const connection = await integrationConnectionModel.findByClientAndProvider(clientId, PROVIDER);
+  if (!connection || connection.status !== "connected") {
+    throw httpError("Connect a LinkedIn account first.", 400, "LINKEDIN_NOT_CONNECTED");
+  }
+  const accessToken = await getValidAccessToken(connection);
+  return linkedinClient.getLeadForms(connection.config.ownerType, connection.config.ownerUrn, accessToken);
+}
+
+/**
  * POST /webhook/:token — the real inbound event delivery. Unlike Google
  * Ads, LinkedIn's notification payload carries no lead answer data (only
  * a pointer, `leadGenFormResponse`), so the actual fetch happens
@@ -362,6 +379,7 @@ module.exports = {
   completeConnect,
   getConnection,
   disconnect,
+  listForms,
   handleChallengeValidation,
   handleWebhookEvent,
 };

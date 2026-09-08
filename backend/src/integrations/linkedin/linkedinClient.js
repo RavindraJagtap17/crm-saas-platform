@@ -141,6 +141,25 @@ async function refreshAccessToken(refreshToken) {
   return data;
 }
 
+// §"Find Forms by Owner" — lets the Client Admin pick a form to map
+// instead of having to already know its numeric id. Restli 2.0's compact-
+// object query syntax (`owner=(organization:urn:...)`); restRequest's
+// generic `query` handling percent-encodes the whole value via
+// URLSearchParams, which differs byte-for-byte from LinkedIn's own sample
+// (which only encodes the URN's colons, not the surrounding parens) but
+// decodes back to the identical value server-side, so it's equivalent.
+// Only `id`/`name`/`state` are surfaced to the caller — never the full
+// form schema (questions/legalInfo/etc.), matching this integration's
+// existing "field mapping is by raw external key, not a schema browser"
+// scope (see linkedinLeadFormService.toRawFields's own comment).
+async function getLeadForms(ownerType, ownerUrn, accessToken) {
+  const { data } = await restRequest("/leadForms", {
+    accessToken,
+    query: { q: "owner", owner: `(${ownerType}:${ownerUrn})`, count: 50 },
+  });
+  return (data?.elements || []).map((f) => ({ id: String(f.id), name: f.name || null, state: f.state || null }));
+}
+
 // §"Create a Lead Notification Subscription - Owner Level" — the
 // recommended flow per LinkedIn's own FAQ ("unless there is an explicit
 // need... for unique webhook URLs on a per form or associated entity
@@ -173,6 +192,7 @@ async function getLeadFormResponse(id, accessToken) {
 module.exports = {
   exchangeCodeForToken,
   refreshAccessToken,
+  getLeadForms,
   createLeadNotificationSubscription,
   deleteLeadNotificationSubscription,
   getLeadFormResponse,

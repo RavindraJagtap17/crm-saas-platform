@@ -49,6 +49,7 @@ const NAV = {
         { key: "sources", label: "Lead Sources", href: "/public/admin/sources.html", icon: "⌘" },
         { key: "products", label: "Products", href: "/public/admin/products.html", icon: "▣" },
         { key: "meta-integration", label: "Meta Lead Ads", href: "/public/admin/meta-integration.html", icon: "◈" },
+        { key: "linkedin-integration", label: "LinkedIn Lead Gen", href: "/public/admin/linkedin-integration.html", icon: "◫" },
       ],
     },
     {

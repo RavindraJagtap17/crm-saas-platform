@@ -28,6 +28,14 @@ const pool = require("../src/config/db");
 
 const DEV_AGENCY_NAME = "Test Agency 101";
 const DEV_CLIENT_NAME = "Test Client A1";
+// A second client under the SAME tenant, with its own Client Admin —
+// exists solely to make cross-client isolation testable as a real browser
+// session (two Client Admins, two different client_ids) instead of only
+// verifiable by reading code/DB rows. Deliberately same-tenant, not a
+// second agency: isolation is enforced by client_id, not tenant_id, so
+// this is the simpler fixture that still proves the real thing, and it
+// avoids seeding a whole second Agency subscription just for this.
+const DEV_CLIENT_B_NAME = "Test Client B1";
 
 // Dev-only, clearly-marked placeholders — never real Razorpay ids, and
 // distinct per fixture row so the UNIQUE constraints on
@@ -41,6 +49,13 @@ const DEV_CLIENT_SUBSCRIPTION_RAZORPAY_ID = "sub_dev_seed_client_a1";
 const DEV_CLIENT_CUSTOMER_RAZORPAY_ID = "cust_dev_seed_client_a1";
 const DEV_CLIENT_LICENSE_ORDER_ID = "order_dev_seed_client_a1";
 const DEV_CLIENT_LICENSE_PAYMENT_ID = "pay_dev_seed_client_a1";
+// Client B1's own fixture ids — distinct from Client A1's above so the
+// UNIQUE constraints on client_subscriptions.razorpay_subscription_id /
+// client_licenses.razorpay_order_id never collide between the two.
+const DEV_CLIENT_B_SUBSCRIPTION_RAZORPAY_ID = "sub_dev_seed_client_b1";
+const DEV_CLIENT_B_CUSTOMER_RAZORPAY_ID = "cust_dev_seed_client_b1";
+const DEV_CLIENT_B_LICENSE_ORDER_ID = "order_dev_seed_client_b1";
+const DEV_CLIENT_B_LICENSE_PAYMENT_ID = "pay_dev_seed_client_b1";
 
 const DEV_USERS = [
   { email: "dev-superadmin@local.test", name: "Dev Super Admin", role: "super_admin", testKey: "super_admin" },
@@ -48,6 +63,16 @@ const DEV_USERS = [
   { email: "dev-clientadmin-test101@local.test", name: "Dev Client Admin — Test Client A1", role: "client_admin", testKey: "client_admin_test101" },
   { email: "dev-clientemployee-test101@local.test", name: "Dev Client Employee — Test Client A1", role: "client_employee", testKey: "client_employee_test101" },
 ];
+
+// Test Client B1's own single user — kept separate from DEV_USERS above
+// (which is looped over with a shared clientId scope) since this one
+// needs its OWN, different clientId.
+const DEV_CLIENT_B_ADMIN = {
+  email: "dev-clientadmin-test102@local.test",
+  name: "Dev Client Admin — Test Client B1",
+  role: "client_admin",
+  testKey: "client_admin_test102",
+};
 
 async function findOrCreateTenant(conn) {
   const [rows] = await conn.query("SELECT id FROM tenants WHERE name = ? LIMIT 1", [DEV_AGENCY_NAME]);
@@ -59,12 +84,12 @@ async function findOrCreateTenant(conn) {
   return result.insertId;
 }
 
-async function findOrCreateClient(conn, tenantId) {
-  const [rows] = await conn.query("SELECT id FROM clients WHERE tenant_id = ? AND name = ? LIMIT 1", [tenantId, DEV_CLIENT_NAME]);
+async function findOrCreateClient(conn, tenantId, clientName = DEV_CLIENT_NAME) {
+  const [rows] = await conn.query("SELECT id FROM clients WHERE tenant_id = ? AND name = ? LIMIT 1", [tenantId, clientName]);
   if (rows[0]) return rows[0].id;
   const [result] = await conn.query(
     `INSERT INTO clients (tenant_id, name, status) VALUES (?, ?, 'active')`,
-    [tenantId, DEV_CLIENT_NAME]
+    [tenantId, clientName]
   );
   return result.insertId;
 }
@@ -136,7 +161,14 @@ async function findOrCreateClientPlan(conn, tenantId) {
 // "repair to active on every run" invariant as the Agency subscription
 // above, for the same reason: "Test Client A1 must have an ACTIVE Client
 // subscription" must hold every time this script runs, not just the first.
-async function ensureActiveClientSubscription(conn, tenantId, clientId, plan) {
+async function ensureActiveClientSubscription(
+  conn,
+  tenantId,
+  clientId,
+  plan,
+  razorpaySubscriptionId = DEV_CLIENT_SUBSCRIPTION_RAZORPAY_ID,
+  razorpayCustomerId = DEV_CLIENT_CUSTOMER_RAZORPAY_ID
+) {
   const [rows] = await conn.query("SELECT id, status FROM client_subscriptions WHERE client_id = ? LIMIT 1", [clientId]);
   if (rows[0]) {
     if (rows[0].status === "active") return { id: rows[0].id, created: false, repaired: false };
@@ -156,7 +188,7 @@ async function ensureActiveClientSubscription(conn, tenantId, clientId, plan) {
        (tenant_id, client_id, plan_id, razorpay_subscription_id, razorpay_customer_id, status,
         current_period_start, current_period_end, current_price, auto_renew)
      VALUES (?, ?, ?, ?, ?, 'active', NOW(), DATE_ADD(NOW(), INTERVAL 1 MONTH), ?, TRUE)`,
-    [tenantId, clientId, plan.id, DEV_CLIENT_SUBSCRIPTION_RAZORPAY_ID, DEV_CLIENT_CUSTOMER_RAZORPAY_ID, plan.price]
+    [tenantId, clientId, plan.id, razorpaySubscriptionId, razorpayCustomerId, plan.price]
   );
   return { id: result.insertId, created: true, repaired: false };
 }
@@ -169,7 +201,13 @@ async function ensureActiveClientSubscription(conn, tenantId, clientId, plan) {
 // run" invariant: "Test Client A1 must have an ACTIVE license" must hold
 // every time this script runs, including re-extending current_period_end
 // if a previous run's fixture has since lazily expired.
-async function ensureActiveClientLicense(conn, tenantId, clientId) {
+async function ensureActiveClientLicense(
+  conn,
+  tenantId,
+  clientId,
+  razorpayOrderId = DEV_CLIENT_LICENSE_ORDER_ID,
+  razorpayPaymentId = DEV_CLIENT_LICENSE_PAYMENT_ID
+) {
   const price = 99900;
   const [rows] = await conn.query("SELECT id, status, current_period_end FROM client_licenses WHERE client_id = ? LIMIT 1", [clientId]);
   if (rows[0]) {
@@ -181,14 +219,14 @@ async function ensureActiveClientLicense(conn, tenantId, clientId) {
              razorpay_order_id = ?, razorpay_payment_id = ?,
              current_period_end = DATE_ADD(NOW(), INTERVAL 1 YEAR)
        WHERE id = ?`,
-      [price, DEV_CLIENT_LICENSE_ORDER_ID, DEV_CLIENT_LICENSE_PAYMENT_ID, rows[0].id]
+      [price, razorpayOrderId, razorpayPaymentId, rows[0].id]
     );
     return { id: rows[0].id, created: false, repaired: true };
   }
   const [result] = await conn.query(
     `INSERT INTO client_licenses (tenant_id, client_id, price, currency, status, razorpay_order_id, razorpay_payment_id, current_period_end)
      VALUES (?, ?, ?, 'INR', 'active', ?, ?, DATE_ADD(NOW(), INTERVAL 1 YEAR))`,
-    [tenantId, clientId, price, DEV_CLIENT_LICENSE_ORDER_ID, DEV_CLIENT_LICENSE_PAYMENT_ID]
+    [tenantId, clientId, price, razorpayOrderId, razorpayPaymentId]
   );
   return { id: result.insertId, created: true, repaired: false };
 }
@@ -219,12 +257,27 @@ async function main() {
 
     const tenantId = await findOrCreateTenant(conn);
     const clientId = await findOrCreateClient(conn, tenantId);
+    const clientBId = await findOrCreateClient(conn, tenantId, DEV_CLIENT_B_NAME);
 
     const agencyPlan = await findOrCreateAgencyPlan(conn);
     const agencySubscription = await ensureActiveAgencySubscription(conn, tenantId, agencyPlan.id);
     const clientPlan = await findOrCreateClientPlan(conn, tenantId);
     const clientSubscription = await ensureActiveClientSubscription(conn, tenantId, clientId, clientPlan);
     const clientLicense = await ensureActiveClientLicense(conn, tenantId, clientId);
+    // Client B1 reuses the same tenant-scoped plan (client_subscription_plans
+    // is keyed by (tenant_id, name), not per-client) but needs its OWN
+    // subscription/license rows (both are client-scoped) with distinct
+    // Razorpay placeholder ids so the UNIQUE constraints on those columns
+    // never collide with Client A1's.
+    const clientBSubscription = await ensureActiveClientSubscription(
+      conn,
+      tenantId,
+      clientBId,
+      clientPlan,
+      DEV_CLIENT_B_SUBSCRIPTION_RAZORPAY_ID,
+      DEV_CLIENT_B_CUSTOMER_RAZORPAY_ID
+    );
+    const clientBLicense = await ensureActiveClientLicense(conn, tenantId, clientBId, DEV_CLIENT_B_LICENSE_ORDER_ID, DEV_CLIENT_B_LICENSE_PAYMENT_ID);
 
     const scopeFor = {
       super_admin: { tenantId: null, clientId: null },
@@ -239,11 +292,14 @@ async function main() {
       const r = await findOrCreateUser(conn, u, scopeFor[u.role]);
       results.push({ ...u, ...r });
     }
+    const clientBAdminResult = await findOrCreateUser(conn, DEV_CLIENT_B_ADMIN, { tenantId: null, clientId: clientBId });
+    results.push({ ...DEV_CLIENT_B_ADMIN, ...clientBAdminResult });
 
     await conn.commit();
 
     console.log(`Dev agency: ${DEV_AGENCY_NAME} (id=${tenantId})`);
     console.log(`Dev client: ${DEV_CLIENT_NAME} (id=${clientId})`);
+    console.log(`Dev client B: ${DEV_CLIENT_B_NAME} (id=${clientBId})`);
     results.forEach((r) => {
       console.log(`  [${r.created ? "created" : "exists "}] ${r.testKey.padEnd(24)} ${r.email} (user id=${r.id})`);
     });
@@ -251,9 +307,11 @@ async function main() {
     const subState = (r) => (r.created ? "created active" : r.repaired ? "repaired to active" : "already active");
     console.log(`\nAgency subscription (agency_subscriptions, tenant_id=${tenantId}): [${subState(agencySubscription)}] id=${agencySubscription.id}`);
     console.log(`Agency plan (agency_subscription_plan singleton): [${agencyPlan.created ? "created" : "exists"}] id=${agencyPlan.id}`);
-    console.log(`Client subscription (client_subscriptions, client_id=${clientId}): [${subState(clientSubscription)}] id=${clientSubscription.id}`);
     console.log(`Client plan (client_subscription_plans, tenant_id=${tenantId}): [${clientPlan.created ? "created" : "exists"}] id=${clientPlan.id}`);
+    console.log(`Client subscription (client_subscriptions, client_id=${clientId}): [${subState(clientSubscription)}] id=${clientSubscription.id}`);
     console.log(`Client license (client_licenses, client_id=${clientId}): [${subState(clientLicense)}] id=${clientLicense.id}`);
+    console.log(`Client B subscription (client_subscriptions, client_id=${clientBId}): [${subState(clientBSubscription)}] id=${clientBSubscription.id}`);
+    console.log(`Client B license (client_licenses, client_id=${clientBId}): [${subState(clientBLicense)}] id=${clientBLicense.id}`);
 
     console.log("\nUse POST /api/auth/dev-login with { \"role\": \"<testKey>\" } to sign in as any of these (development only).");
   } catch (err) {

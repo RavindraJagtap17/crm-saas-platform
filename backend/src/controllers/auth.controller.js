@@ -72,6 +72,11 @@ const DEV_LOGIN_EMAILS = {
   agency_admin_test101: "dev-agencyadmin-test101@local.test",
   client_admin_test101: "dev-clientadmin-test101@local.test",
   client_employee_test101: "dev-clientemployee-test101@local.test",
+  // A second Client Admin under a DIFFERENT client (Test Client B1, same
+  // Test Agency 101 tenant) — exists solely so cross-client isolation can
+  // be exercised as a real browser session, not just asserted from a
+  // single-client script. See scripts/seedDevAuth.js.
+  client_admin_test102: "dev-clientadmin-test102@local.test",
 };
 
 // POST /api/auth/dev-login — C16: development-only, NODE_ENV-gated at

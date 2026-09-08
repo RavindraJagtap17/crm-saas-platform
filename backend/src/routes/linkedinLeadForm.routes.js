@@ -41,6 +41,7 @@ router.use(authenticate, tenantScope, requireActiveTenant, requireRole("client_a
 router.get("/connect", controller.connect);
 router.get("/connection", controller.getConnection);
 router.delete("/connection", controller.disconnect);
+router.get("/forms", controller.listForms);
 
 // Field mappings and recent events are NOT redefined here — they fall
 // through to the generic /api/integrations/:provider/mappings and

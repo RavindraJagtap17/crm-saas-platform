@@ -43,6 +43,12 @@ const disconnect = asyncHandler(async (req, res) => {
   res.status(204).send();
 });
 
+// GET /api/integrations/linkedin/forms — "see connected LinkedIn forms
+// where available" (mirrors Meta's own /forms, §I precedent).
+const listForms = asyncHandler(async (req, res) => {
+  res.json({ forms: await linkedinLeadFormService.listForms(req.clientId) });
+});
+
 // GET /api/integrations/linkedin/webhook/:token — PUBLIC. LinkedIn's
 // challenge-response validation handshake (initial + ~2-hourly re-check).
 const validateWebhook = asyncHandler(async (req, res) => {
@@ -57,4 +63,4 @@ const receiveWebhook = asyncHandler(async (req, res) => {
   res.status(httpStatus).json(body);
 });
 
-module.exports = { connect, oauthCallback, getConnection, disconnect, validateWebhook, receiveWebhook };
+module.exports = { connect, oauthCallback, getConnection, disconnect, listForms, validateWebhook, receiveWebhook };
