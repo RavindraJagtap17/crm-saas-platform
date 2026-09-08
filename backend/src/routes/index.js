@@ -17,6 +17,7 @@ const publicFormRoutes = require("./publicForm.routes");
 const metaRoutes = require("./meta.routes");
 const googleLeadFormRoutes = require("./googleLeadForm.routes");
 const linkedinLeadFormRoutes = require("./linkedinLeadForm.routes");
+const indiamartLeadFormRoutes = require("./indiamartLeadForm.routes");
 const integrationRoutes = require("./integration.routes");
 const razorpayWebhookRoutes = require("./razorpayWebhook.routes");
 
@@ -50,6 +51,11 @@ router.use("/api/integrations/google", googleLeadFormRoutes);
 // /events for provider="linkedin" fall through unmatched to the generic
 // router beneath it.
 router.use("/api/integrations/linkedin", linkedinLeadFormRoutes);
+// Same fallthrough design as Google/LinkedIn above — /connect and
+// /webhook/:token are handled here; /connection, /mappings, and /events
+// for provider="indiamart" fall through unmatched to the generic router
+// beneath it.
+router.use("/api/integrations/indiamart", indiamartLeadFormRoutes);
 router.use("/api/integrations", integrationRoutes);
 router.use("/api/razorpay/webhook", razorpayWebhookRoutes);
 

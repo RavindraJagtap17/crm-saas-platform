@@ -176,6 +176,25 @@ export const googleAdsApi = {
   events: (limit) => api.get(`/api/integrations/google/events${qs({ limit })}`),
 };
 
+// IndiaMART Push API — even simpler than Google's own connect: mints ONLY
+// a webhook URL, no key/secret at all (IndiaMART's Push API provides
+// nothing to verify a delivery with — see indiamartLeadFormService.js's
+// own module comment). No form concept exists either (enquiries aren't
+// organized by form the way ad-platform lead forms are), so mappings are
+// always created against externalFormId "default" and there is no
+// per-form selection step in the UI. mappings/events reuse the same
+// generic /api/integrations/:provider/* shape as every other provider.
+export const indiamartApi = {
+  connect: () => api.post("/api/integrations/indiamart/connect"),
+  connection: () => api.get("/api/integrations/indiamart/connection"),
+  disconnect: () => api.delete("/api/integrations/indiamart/connection"),
+  mappings: () => api.get("/api/integrations/indiamart/mappings"),
+  createMapping: (body) => api.post("/api/integrations/indiamart/mappings", body),
+  updateMapping: (id, body) => api.patch(`/api/integrations/indiamart/mappings/${id}`, body),
+  removeMapping: (id) => api.delete(`/api/integrations/indiamart/mappings/${id}`),
+  events: (limit) => api.get(`/api/integrations/indiamart/events${qs({ limit })}`),
+};
+
 export const superAdminApi = {
   overview: () => api.get("/api/super-admin/overview"),
   // query: { q, status } — both optional, server-side filtered (see
