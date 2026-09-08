@@ -156,6 +156,26 @@ export const linkedinApi = {
   events: (limit) => api.get(`/api/integrations/linkedin/events${qs({ limit })}`),
 };
 
+// Google Ads Lead Form webhook extension — unlike Meta/LinkedIn's OAuth
+// flows, connect() takes NO input and needs no redirect: it synchronously
+// mints a fresh webhook URL + shared-secret key server-side (see
+// googleLeadFormService.connect) that the Client Admin pastes into the
+// Google Ads UI themselves. No /forms endpoint exists (Google's API offers
+// no account/form discovery without OAuth, which this integration
+// deliberately doesn't use) — externalFormId for mappings/events is always
+// entered manually. mappings/events reuse the same generic
+// /api/integrations/:provider/* shape as every other provider.
+export const googleAdsApi = {
+  connect: () => api.post("/api/integrations/google/connect"),
+  connection: () => api.get("/api/integrations/google/connection"),
+  disconnect: () => api.delete("/api/integrations/google/connection"),
+  mappings: (externalFormId) => api.get(`/api/integrations/google/mappings${qs({ externalFormId })}`),
+  createMapping: (body) => api.post("/api/integrations/google/mappings", body),
+  updateMapping: (id, body) => api.patch(`/api/integrations/google/mappings/${id}`, body),
+  removeMapping: (id) => api.delete(`/api/integrations/google/mappings/${id}`),
+  events: (limit) => api.get(`/api/integrations/google/events${qs({ limit })}`),
+};
+
 export const superAdminApi = {
   overview: () => api.get("/api/super-admin/overview"),
   // query: { q, status } — both optional, server-side filtered (see

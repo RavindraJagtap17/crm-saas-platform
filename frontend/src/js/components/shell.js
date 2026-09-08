@@ -50,6 +50,7 @@ const NAV = {
         { key: "products", label: "Products", href: "/public/admin/products.html", icon: "▣" },
         { key: "meta-integration", label: "Meta Lead Ads", href: "/public/admin/meta-integration.html", icon: "◈" },
         { key: "linkedin-integration", label: "LinkedIn Lead Gen", href: "/public/admin/linkedin-integration.html", icon: "◫" },
+        { key: "google-integration", label: "Google Ads Lead Forms", href: "/public/admin/google-integration.html", icon: "▧" },
       ],
     },
     {
