@@ -185,3 +185,18 @@ export function qs(params) {
   const s = usp.toString();
   return s ? `?${s}` : "";
 }
+
+// Triggers a browser "Save As" for an already-fetched Blob (e.g. from
+// api.download) — an object URL + a throwaway <a download> click, revoked
+// right after. Shared so any future export/download feature reuses this
+// instead of re-implementing it.
+export function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

@@ -90,6 +90,36 @@ async function findByMetaLeadId(metaLeadId) {
   return rows[0] || null;
 }
 
+// Bulk actions' one and only ownership check: a single set-based query
+// rather than N per-id lookups (Phase 15) — the caller compares
+// found.length against ids.length to decide "every id belongs to this
+// client" in one round trip, which is also what makes a mixed-client
+// request fail safely as a whole rather than partially (see leadService.
+// bulkAssignLeads/bulkChangeStatus).
+async function findByIdsForClient(clientId, ids) {
+  if (!ids.length) return [];
+  const [rows] = await pool.query(
+    `SELECT ${BASE_COLUMNS} FROM leads WHERE client_id = ? AND id IN (${ids.map(() => "?").join(",")})`,
+    [clientId, ...ids]
+  );
+  return rows;
+}
+
+// CSV Import's existing-duplicate check: one set-based query for every
+// distinct normalized phone number appearing anywhere in the uploaded
+// file, not one query per row (Phase 19). Returns only the phones that
+// already exist for this client — the caller (leadImportService) doesn't
+// need the matched lead rows themselves, only "does this phone already
+// exist," matching createLead's own phone-only duplicate rule exactly.
+async function findExistingPhones(clientId, phones) {
+  if (!phones.length) return [];
+  const [rows] = await pool.query(
+    `SELECT DISTINCT phone FROM leads WHERE client_id = ? AND phone IN (${phones.map(() => "?").join(",")})`,
+    [clientId, ...phones]
+  );
+  return rows.map((r) => r.phone);
+}
+
 async function count(clientId, { restrictToUserId, filters = {} } = {}) {
   const { where, params } = buildFilterWhere(clientId, { restrictToUserId, filters });
   const [rows] = await pool.query(`SELECT COUNT(*) AS total FROM leads WHERE ${where}`, params);
@@ -128,6 +158,16 @@ function buildFilterWhere(clientId, { restrictToUserId, filters }) {
   if (filters.assignedTo) {
     clauses.push("assigned_to = ?");
     params.push(filters.assignedTo);
+  }
+  // "Unassigned" — previously a client-side-only post-filter in
+  // admin-leads.js (filtering an already-paginated page in JS), which
+  // meant pagination counts were wrong whenever it was active and made it
+  // impossible for CSV export (which must ignore pagination entirely) to
+  // honor it at all. Implemented properly here instead: mutually
+  // exclusive with filters.assignedTo by construction (the caller only
+  // ever sets one or the other — see leadService.parseLeadFilters).
+  if (filters.unassignedOnly) {
+    clauses.push("assigned_to IS NULL");
   }
   if (filters.isDuplicate !== undefined) {
     clauses.push("is_duplicate = ?");
@@ -306,6 +346,8 @@ async function employeeTotals(clientId, userId) {
 module.exports = {
   findById,
   findByMetaLeadId,
+  findByIdsForClient,
+  findExistingPhones,
   findEarliestByPhoneForUpdate,
   insert,
   count,

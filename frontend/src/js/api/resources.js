@@ -71,6 +71,16 @@ export const leadsApi = {
   remove: (id) => api.delete(`/api/leads/${id}`),
   changeStatus: (id, statusId) => api.post(`/api/leads/${id}/status`, { statusId }),
   assign: (id, assignedTo) => api.post(`/api/leads/${id}/assign`, { assignedTo }),
+  bulkAssign: (leadIds, assignedTo) => api.post("/api/leads/bulk/assign", { leadIds, assignedTo }),
+  bulkChangeStatus: (leadIds, statusId) => api.post("/api/leads/bulk/status", { leadIds, statusId }),
+  // Both resolve to { blob, filename } — see api.download in client.js.
+  exportFiltered: (query) => api.download(`/api/leads/export${qs(query)}`),
+  exportSelected: (leadIds) => api.download("/api/leads/export-selected", { leadIds }),
+  // previewImport returns the full preview payload (token, counts,
+  // bounded row detail); confirmImport takes back only that token — the
+  // browser never re-sends the file or the row data itself.
+  previewImport: (file) => api.upload("/api/leads/import/preview", file),
+  confirmImport: (token) => api.post("/api/leads/import", { token }),
   activities: (id) => api.get(`/api/leads/${id}/activities`),
   addActivity: (id, body) => api.post(`/api/leads/${id}/activities`, body),
   createFollowUp: (id, body) => api.post(`/api/leads/${id}/follow-ups`, body),

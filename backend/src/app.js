@@ -48,6 +48,13 @@ app.use((req, res, next) => {
     // wildcard, since credentials + "*" is not something browsers allow
     // anyway and would be insecure if they did.
     credentials: true,
+    // Content-Disposition isn't on the small set of response headers a
+    // browser exposes to cross-origin fetch() by default — without this,
+    // the server sends the right filename but api.download() (client.js)
+    // can never read it, silently falling back to a generic name. Needed
+    // for Lead CSV Export (leads-*.csv); harmless for every other
+    // response, which simply doesn't set this header at all.
+    exposedHeaders: ["Content-Disposition"],
   })(req, res, next);
 });
 

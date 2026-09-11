@@ -105,6 +105,31 @@ function validateAssignment(body) {
   return assignedTo === null ? null : Number(assignedTo);
 }
 
+// Bulk lead actions — bounded to the same ceiling the list endpoint's own
+// page size is already capped at (MAX_PAGE_SIZE, pagination.js), since
+// selection is deliberately "current page only" (see admin-leads.js) — a
+// request can never legitimately need more than that many ids at once.
+const MAX_BULK_LEADS = 100;
+
+function validateBulkLeadIds(leadIds) {
+  if (!Array.isArray(leadIds) || leadIds.length === 0) {
+    throw httpError("leadIds must be a non-empty array.", 400);
+  }
+  if (leadIds.length > MAX_BULK_LEADS) {
+    throw httpError(`Cannot operate on more than ${MAX_BULK_LEADS} leads at once.`, 400);
+  }
+  const seen = new Set();
+  const ids = [];
+  for (const raw of leadIds) {
+    if (!isPositiveInt(raw)) throw httpError("leadIds must all be positive integers.", 400);
+    const id = Number(raw);
+    if (seen.has(id)) continue; // de-duped, not rejected — a UI selection can never itself produce a dup; only a hand-crafted request could, and there's no reason to fail a request over it
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
 const ACTIVITY_TYPES = ["call", "note"]; // "assignment" is server-generated only, not client-postable
 function validateCreateActivity(body) {
   const type = body?.type;
@@ -129,5 +154,7 @@ module.exports = {
   validateStatusChange,
   validateAssignment,
   validateCreateActivity,
+  validateBulkLeadIds,
   stripProtectedFields,
+  MAX_BULK_LEADS,
 };
