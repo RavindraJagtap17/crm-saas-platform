@@ -23,11 +23,20 @@ step at a time.
 
 - Step 10 — Final security hardening / production-readiness pass: a full tenant-isolation audit (every model/service query, 10 explicit cross-tenant attack scenarios) found and fixed one genuine cross-tenant vulnerability (a client-writable `metaLeadId` on manual lead creation could pre-claim another tenant's Meta lead), added rate limiting to authentication and webhook endpoints (the one gap versus the public form's existing limiter), and hardened `payments.subscription_id` to the same composite tenant-scoped FK pattern used everywhere else in the schema. Full migration up/down round-trip verified from an empty database. No business functionality changed. See the Step 10 report for the complete findings list, regression results, and Final Phase 1 acceptance checklist.
 
+**Frontend migration (post-Step-10)** — the Step 5 vanilla HTML/CSS/JS frontend was rebuilt as a
+React + Vite SPA (`frontend-react/`), functionally equivalent: same design tokens/visual design,
+same API contracts (backend untouched apart from a CORS allowlist addition for the Vite dev
+server), same auth model (in-memory access token, httpOnly refresh cookie), every page and
+feature carried over — including the CSV import preview/confirm flow, bulk lead actions, and all
+four lead-source integrations. The old `frontend/` directory has been removed after full
+verification (build, live role-by-role browser testing, and a real CSV import/bulk-action/agency-
+creation round trip).
+
 Still not built: WhatsApp, YaGo, and every other future-phase feature outside this project's approved scope.
 
 ## Tech stack
 
-- Frontend: HTML5, CSS3, vanilla JavaScript (no framework, no build step)
+- Frontend: React 19 + Vite, React Router — see "Frontend structure" below
 - Backend: Node.js, Express.js
 - Database: MySQL
 - Auth: Google Sign-In only — no passwords anywhere in this system
@@ -36,45 +45,49 @@ Still not built: WhatsApp, YaGo, and every other future-phase feature outside th
 ## Project structure
 
 ```
-backend/    Express API (src/config, routes, controllers, services, models,
-            middlewares, validators, integrations, jobs, utils)
-frontend/   Static site — see "Frontend structure" below
-docs/       Deployment, environment, and API reference docs
+backend/         Express API (src/config, routes, controllers, services, models,
+                  middlewares, validators, integrations, jobs, utils)
+frontend-react/   React + Vite SPA — see "Frontend structure" below
+docs/             Deployment, environment, and API reference docs
 ```
 
 ### Frontend structure
 
+The frontend was originally built as a plain HTML/CSS/JS site (Step 5) and later migrated to a
+React + Vite SPA, functionally equivalent, same design system and API contracts. The old
+`frontend/` directory has been removed; `frontend-react/` is the only frontend now.
+
 ```
-frontend/
-├── config.js               Runtime config: API_BASE_URL, GOOGLE_CLIENT_ID (edited per environment)
-├── serve.json               Local-dev-only server config (see note below)
-├── public/                  One folder per role area — every page is a plain .html file
-│   ├── auth/                 Sign in, create-agency signup
-│   ├── super-admin/           Platform overview, tenant detail, plan catalog
-│   ├── admin/                  Tenant Admin: dashboard, leads, statuses, sources, products,
-│   │                            custom fields, web forms, Meta Lead Ads, employees, branding, billing
-│   ├── employee/                Employee: dashboard, my leads, lead detail, account-inactive
-│   └── embed/                    crm-lead-widget.js (script embed) + lead-form.html (iframe fallback)
+frontend-react/
+├── .env / .env.example      Runtime config: VITE_API_BASE_URL, VITE_GOOGLE_CLIENT_ID,
+│                              VITE_RAZORPAY_KEY_ID (edited per environment; Vite only exposes
+│                              vars prefixed VITE_ to client code)
+├── public/
+│   ├── favicon.svg, icons.svg
+│   └── public/embed/          crm-lead-widget.js (script embed) + lead-form.html (iframe
+│                                fallback) — copied verbatim, served at the same fixed URL the
+│                                widget is already embedded with on real third-party sites
 └── src/
-    ├── css/                  tokens.css (design tokens) → base.css → components.css → layout.css
-    └── js/
-        ├── api/               client.js (centralized fetch, auth, refresh-on-401), resources.js
-        ├── components/         toast, modal, shell (nav), dataTable, chart, leadForm, ui helpers
-        ├── pages/               one controller module per .html page
-        ├── session.js           in-memory access token + role-based routing guard
-        └── branding.js           applies a tenant's logo/name/color at runtime
+    ├── api/                  client.js (centralized fetch, auth, refresh-on-401), resources.js
+    ├── auth/                  tokenStore.js (in-memory access token), AuthContext, ProtectedRoute
+    ├── components/             Modal, DataTable, Pagination, Chart, LeadForm, FollowUpPanel,
+    │                            toast/confirmDialog (pub/sub singletons), Badges, States
+    ├── layouts/                 Shell (sidebar/topbar nav), nav.js, PageTitleContext
+    ├── pages/                    auth/, admin/, employee/, agency/, super-admin/ — one component
+    │                              per route
+    ├── styles/                   tokens.css (design tokens) → base.css → components.css →
+    │                              layout.css — carried over unchanged from the old frontend
+    └── utils/                     format.js, qs.js, download.js, branding.js
 ```
 
-No bundler, no framework — every page is `<script type="module">` importing plain ES modules.
-The access token is kept in memory only (never localStorage/sessionStorage); each page
-re-establishes its own session on load via the httpOnly refresh cookie, so the refresh flow is
-exercised on every page view, not just at login.
+The access token is kept in memory only (never localStorage/sessionStorage); the SPA
+re-establishes its session once on load via the httpOnly refresh cookie, and `ProtectedRoute`
+gates every route by role.
 
-One deliberate exception: `public/embed/crm-lead-widget.js` is a plain IIFE, not a module — it has
-to work when a third-party site drops it in via a bare `<script src="...">` tag, so it can't rely
-on `type="module"` or import anything else in `src/js/`. `public/embed/lead-form.html`'s own
-controller (the iframe fallback), by contrast, is served from this app's own origin and follows
-the normal module pattern like every other page.
+One deliberate exception: `public/public/embed/crm-lead-widget.js` is a plain IIFE, not a module —
+it has to work when a third-party site drops it in via a bare `<script src="...">` tag, so it
+can't rely on any bundler output or import anything else in `src/`. It's served as a static file,
+untouched by the Vite build.
 
 ## Local development
 
@@ -97,19 +110,19 @@ Google Sign-In to succeed; the server itself starts fine with a placeholder valu
 
 Confirm it's running: `curl http://localhost:4000/health`
 
-**Frontend** — any static file server pointed at the `frontend/` folder works, e.g.:
+**Frontend:**
 ```bash
-npx serve frontend -l 3000
+cd frontend-react
+npm install
+cp .env.example .env   # then fill in VITE_API_BASE_URL, VITE_GOOGLE_CLIENT_ID, VITE_RAZORPAY_KEY_ID
+npm run dev
 ```
-Then open `http://localhost:3000/public/auth/index.html`. Set `CORS_ALLOWED_ORIGINS` in the
-backend's `.env` to match whatever origin you serve the frontend from (defaults to
-`http://localhost:3000`).
+Then open `http://localhost:5173`. Set `CORS_ALLOWED_ORIGINS` in the backend's `.env` to include
+the origin you serve the frontend from (the Vite dev server's `http://localhost:5173` by default).
 
-`frontend/serve.json` disables the `serve` package's default "clean URLs" redirect and adds an
-explicit rewrite instead — the redirect variant drops query strings (e.g. `lead-detail.html?id=5`
-loses `?id=5` on redirect), which broke deep-linking to a specific lead. This is a local-dev-server
-setting only; it doesn't change what the actual `.html` files or their links contain, and a plain
-static host (Plesk included) serving the files as-is needs no equivalent configuration.
+For a production build: `npm run build` (outputs to `frontend-react/dist/`), served by any static
+host (Plesk included) — client-side routing needs a rewrite-to-`index.html` fallback for unknown
+paths, the same requirement any React Router SPA has.
 
 **Testing the website enquiry form locally** — create a form on the **Website Forms** admin page
 (needs at least one Lead Source to exist first). `localhost` is accepted as an allowed domain
