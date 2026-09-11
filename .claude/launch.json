@@ -8,10 +8,10 @@
       "port": 4000
     },
     {
-      "name": "frontend",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["serve", "frontend", "-l", "3000"],
-      "port": 3000
+      "name": "frontend-react",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend-react", "run", "dev", "--", "--port", "5173"],
+      "port": 5173
     }
   ]
 }

@@ -11,7 +11,7 @@ in real values; `.env` is git-ignored and must never be committed.
 | `NODE_ENV` | `development` | `development` or `production` — controls error detail, log format |
 | `PORT` | `4000` | Port the API listens on |
 | `APP_URL` | `http://localhost:4000` | This API's own public URL |
-| `FRONTEND_URL` | `http://localhost:3000` | Where the frontend is served from |
+| `FRONTEND_URL` | `http://localhost:5173` | Where the frontend is served from (the Vite dev server's default port; a production deploy sets this to the real frontend origin) |
 | `CORS_ALLOWED_ORIGINS` | *(empty)* | Comma-separated list of origins allowed to call the API from a browser. Empty means no cross-origin browser requests are allowed — safe by default. Never set to `*` in production. |
 | `LOG_LEVEL` | `info` | `error`, `warn`, `info`, or `debug` |
 
@@ -88,7 +88,7 @@ set via `PATCH /api/meta/connection` — see `docs/API.md`) rather than as an en
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `RAZORPAY_KEY_ID` | *(required)* | From the Razorpay Dashboard → Settings → API Keys (use Test Mode keys for local dev). This is Razorpay's **public** key — also read by the frontend (`frontend/config.js`) to open Checkout, the same trust level as `GOOGLE_CLIENT_ID`. |
+| `RAZORPAY_KEY_ID` | *(required)* | From the Razorpay Dashboard → Settings → API Keys (use Test Mode keys for local dev). This is Razorpay's **public** key — also read by the frontend (`frontend-react/.env`'s `VITE_RAZORPAY_KEY_ID`) to open Checkout, the same trust level as `GOOGLE_CLIENT_ID`. |
 | `RAZORPAY_KEY_SECRET` | *(required)* | From the same API Keys page. Server-side only — used as HTTP Basic Auth for every outbound Razorpay API call (`backend/src/integrations/razorpay/razorpayClient.js`). Never sent to the browser, never logged. |
 | `RAZORPAY_WEBHOOK_SECRET` | *(required)* | **Not** the same value as `RAZORPAY_KEY_SECRET` — a separate secret you set when configuring the webhook itself (Dashboard → Settings → Webhooks). Verifies `X-Razorpay-Signature` on every inbound webhook. |
 
