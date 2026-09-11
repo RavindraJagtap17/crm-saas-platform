@@ -37,8 +37,17 @@ export async function applyTenantBranding() {
     return null;
   }
 
+  // Reset first, then conditionally set: this SPA can move directly from
+  // one tenant to another (dev-login role switch, no full page reload —
+  // unlike the old app, which always reloaded on login and so never
+  // needed to worry about a previous tenant's color surviving). Without
+  // clearing first, a tenant with no custom brandPrimaryColor would keep
+  // showing whichever color the last-viewed tenant had set.
+  const root = document.documentElement.style;
+  const brandProps = ["--brand-500", "--brand-600", "--brand-700", "--brand-50", "--brand-100", "--brand-contrast"];
+  brandProps.forEach((prop) => root.removeProperty(prop));
+
   if (tenant.brandPrimaryColor) {
-    const root = document.documentElement.style;
     root.setProperty("--brand-500", tenant.brandPrimaryColor);
     root.setProperty("--brand-600", shade(tenant.brandPrimaryColor, -12));
     root.setProperty("--brand-700", shade(tenant.brandPrimaryColor, -22));

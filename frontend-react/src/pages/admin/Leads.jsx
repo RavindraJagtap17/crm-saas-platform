@@ -467,7 +467,7 @@ export default function Leads() {
           <h2 className="page-title">Leads</h2>
           <p className="page-subtitle">All leads for your client.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
           <button className="btn btn-secondary" onClick={() => setModal("import")}>Import CSV</button>
           <button className="btn btn-secondary" onClick={exportFiltered}>Export All Filtered</button>
           <button className="btn btn-primary" onClick={() => setModal("create")}>+ New Lead</button>

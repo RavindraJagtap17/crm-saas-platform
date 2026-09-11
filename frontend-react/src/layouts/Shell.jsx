@@ -112,7 +112,16 @@ export default function Shell() {
   const groups = NAV[role] || [];
 
   useEffect(() => {
-    if (role === "super_admin") return;
+    if (role === "super_admin") {
+      // Clear any tenant brand color left inline on <html> by a previous
+      // Client/Agency Admin session in this SPA — an inline style always
+      // beats the [data-app-mode="platform"] stylesheet rule below, so a
+      // stale --brand-* here would otherwise bleed the wrong color into
+      // the platform theme instead of its fixed amber.
+      const root = document.documentElement.style;
+      ["--brand-500", "--brand-600", "--brand-700", "--brand-50", "--brand-100", "--brand-contrast"].forEach((prop) => root.removeProperty(prop));
+      return;
+    }
     applyTenantBranding().then(setTenant);
   }, [role]);
 
