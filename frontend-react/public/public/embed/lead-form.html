@@ -4,22 +4,151 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Enquiry Form</title>
-  <link rel="stylesheet" href="../../src/css/tokens.css" />
-  <link rel="stylesheet" href="../../src/css/base.css" />
-  <link rel="stylesheet" href="../../src/css/components.css" />
-  <script src="../../config.js"></script>
   <style>
     /* Standalone page meant to live inside an <iframe> on a third-party
-       site — intentionally has no app shell, sidebar, or navigation. */
-    body { background: var(--bg-surface); }
+       site — intentionally has no app shell, sidebar, or navigation, and
+       (unlike the rest of this app) does not load any stylesheet from
+       the SPA build: this page is fetched directly by the browser, not
+       bundled by Vite, so it carries its own copy of just the design
+       tokens and component classes it actually uses (see
+       ../../src/styles/tokens.css / components.css for the source of
+       truth — keep these in sync if either changes). */
+    @import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+
+    :root {
+      --gray-0: #ffffff;
+      --gray-50: #f7f8fb;
+      --gray-100: #eef0f5;
+      --gray-300: #c1c6d3;
+      --gray-400: #9aa1b3;
+      --gray-600: #545c75;
+      --gray-900: #14161f;
+
+      --brand-100: #dfe2ff;
+      --brand-500: #4f46e5;
+      --brand-600: #4338ca;
+      --brand-contrast: #ffffff;
+
+      --color-success: #16a34a;
+      --color-success-bg: #e9f8ee;
+      --color-success-border: #bfe8cd;
+      --color-danger: #dc2626;
+      --color-danger-bg: #fdecec;
+      --color-danger-border: #f7c6c6;
+
+      --bg-app: var(--gray-50);
+      --bg-surface: var(--gray-0);
+      --bg-surface-hover: var(--gray-100);
+      --border-strong: var(--gray-300);
+      --text-primary: var(--gray-900);
+      --text-secondary: var(--gray-600);
+      --text-tertiary: var(--gray-400);
+      --text-on-brand: var(--brand-contrast);
+
+      --font-sans: "Plus Jakarta Sans", ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+      --text-xs: 0.75rem;
+      --text-sm: 0.8125rem;
+      --text-base: 0.9rem;
+      --weight-regular: 400;
+      --weight-semibold: 650;
+      --weight-bold: 750;
+      --leading-normal: 1.5;
+      --leading-tight: 1.2;
+
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-6: 24px;
+      --space-8: 32px;
+
+      --radius-sm: 6px;
+      --radius-md: 10px;
+
+      --shadow-sm: 0 1px 2px rgba(20, 22, 31, 0.06), 0 1px 1px rgba(20, 22, 31, 0.03);
+      --shadow-md: 0 6px 16px rgba(20, 22, 31, 0.08), 0 2px 4px rgba(20, 22, 31, 0.04);
+      --shadow-focus: 0 0 0 3px var(--brand-100);
+      --transition-fast: 120ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { height: 100%; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      background: var(--bg-app);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: var(--text-base);
+      line-height: var(--leading-normal);
+      -webkit-font-smoothing: antialiased;
+    }
+    h2 {
+      margin: 0 0 var(--space-4);
+      font-weight: var(--weight-bold);
+      line-height: var(--leading-tight);
+      letter-spacing: -0.01em;
+    }
+    :focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; border-radius: var(--radius-sm); }
+    :focus:not(:focus-visible) { outline: none; }
+
     .embed-wrap { max-width: 480px; margin: 0 auto; padding: var(--space-6) var(--space-5); }
     .hp-field { position: absolute; left: -9999px; top: -9999px; width: 1px; height: 1px; overflow: hidden; }
+    .text-secondary { color: var(--text-secondary); }
+    .mt-4 { margin-top: var(--space-4); }
+
+    .field { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); }
+    .label { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--text-primary); }
+
+    .input, .select, .textarea {
+      width: 100%; height: 40px; padding: 0 var(--space-3);
+      background: var(--bg-surface); color: var(--text-primary);
+      border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+      font-family: inherit; font-size: inherit; color: inherit;
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+    .textarea { height: auto; min-height: 96px; padding: var(--space-3); resize: vertical; }
+    .input::placeholder, .textarea::placeholder { color: var(--text-tertiary); }
+    .input:hover, .select:hover, .textarea:hover { border-color: var(--text-tertiary); }
+    .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--brand-500); box-shadow: var(--shadow-focus); }
+    .select {
+      appearance: none; padding-right: var(--space-8);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23717996' stroke-width='1.6'%3E%3Cpath d='m5 8 5 5 5-5'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center; background-size: 16px;
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+      height: 38px; padding: 0 var(--space-4);
+      font-size: var(--text-sm); font-weight: var(--weight-semibold);
+      border-radius: var(--radius-md); border: 1px solid transparent;
+      cursor: pointer; white-space: nowrap; user-select: none;
+      transition: background var(--transition-fast), box-shadow var(--transition-fast), color var(--transition-fast);
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+    .btn-primary { background: var(--brand-500); color: var(--text-on-brand); box-shadow: var(--shadow-sm); }
+    .btn-primary:hover:not(:disabled) { background: var(--brand-600); box-shadow: var(--shadow-md); }
+    .btn-block { width: 100%; }
+    .btn .spinner { display: none; }
+    .btn.is-loading { pointer-events: none; color: transparent !important; position: relative; }
+    .btn.is-loading .spinner { display: block; position: absolute; inset: 0; margin: auto; }
+
+    .spinner {
+      width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .alert { display: flex; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-md); border: 1px solid transparent; font-size: var(--text-sm); }
+    .alert-danger { background: var(--color-danger-bg); border-color: var(--color-danger-border); color: var(--color-danger); }
+    .alert-success { background: var(--color-success-bg); border-color: var(--color-success-border); color: var(--color-success); }
   </style>
 </head>
 <body>
   <div class="embed-wrap" id="embed-root">
     <p class="text-secondary">Loading form…</p>
   </div>
-  <script type="module" src="../../src/js/pages/embed-lead-form.js"></script>
+  <script src="./lead-form.js"></script>
 </body>
 </html>

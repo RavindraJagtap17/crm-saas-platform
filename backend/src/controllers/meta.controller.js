@@ -22,17 +22,17 @@ const oauthCallback = asyncHandler(async (req, res) => {
   const { code, state, error: metaError } = req.query;
 
   if (metaError) {
-    return res.redirect(`${config.frontendUrl}/public/admin/meta-integration.html?error=${encodeURIComponent(String(metaError))}`);
+    return res.redirect(`${config.frontendUrl}/admin/meta-integration?error=${encodeURIComponent(String(metaError))}`);
   }
   if (!code || !state) {
-    return res.redirect(`${config.frontendUrl}/public/admin/meta-integration.html?error=missing_params`);
+    return res.redirect(`${config.frontendUrl}/admin/meta-integration?error=missing_params`);
   }
 
   try {
     await metaIntegrationService.completeConnect(code, state);
-    return res.redirect(`${config.frontendUrl}/public/admin/meta-integration.html?connected=true`);
+    return res.redirect(`${config.frontendUrl}/admin/meta-integration?connected=true`);
   } catch (err) {
-    return res.redirect(`${config.frontendUrl}/public/admin/meta-integration.html?error=${encodeURIComponent(err.code || "connection_failed")}`);
+    return res.redirect(`${config.frontendUrl}/admin/meta-integration?error=${encodeURIComponent(err.code || "connection_failed")}`);
   }
 });
 
