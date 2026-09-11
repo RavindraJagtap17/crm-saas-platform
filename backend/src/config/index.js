@@ -54,7 +54,7 @@ const config = {
   isProduction: process.env.NODE_ENV === "production",
   port: parseInt(process.env.PORT, 10) || 4000,
   appUrl: process.env.APP_URL || "http://localhost:4000",
-  frontendUrl: process.env.FRONTEND_URL || "http://localhost:3000",
+  frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
   corsAllowedOrigins: readList("CORS_ALLOWED_ORIGINS"),
   logLevel: process.env.LOG_LEVEL || "info",
 

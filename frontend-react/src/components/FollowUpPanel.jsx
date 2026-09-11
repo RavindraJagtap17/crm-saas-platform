@@ -4,7 +4,7 @@ import { confirmDialog } from "./confirmDialog";
 import { toastSuccess, toastError } from "./toast";
 import { formatDateTime } from "../utils/format";
 import { FollowUpStatusBadge } from "./Badges";
-import { EmptyState, SkeletonRows } from "./States";
+import { EmptyState } from "./States";
 import ScheduleFollowUpModal from "./ScheduleFollowUpModal";
 import { refreshFollowUpIndicator } from "../layouts/followUpIndicatorBus";
 

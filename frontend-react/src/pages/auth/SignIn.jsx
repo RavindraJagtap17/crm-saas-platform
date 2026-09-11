@@ -16,6 +16,15 @@ function isPlaceholder(id) {
   return !id || id.startsWith("PLACEHOLDER");
 }
 
+// Module-level, not per-render: google.accounts.id.initialize() only ever
+// needs to run once per page load — calling it again (e.g. React
+// StrictMode's dev-only double-invoke of this effect) just logs a benign
+// "called multiple times" warning from Google's own SDK. The callback it's
+// initialized with reads from credentialCallbackRef below, which IS kept
+// fresh every render, so guarding this way never risks calling a stale
+// handler.
+let gsiInitialized = false;
+
 /**
  * Ported from the old frontend's auth-signin.js. Google Identity Services'
  * rendered button is imperative (renderButton mutates a DOM node directly),
@@ -27,6 +36,7 @@ export default function SignIn() {
   const { user, loading, setSession } = useAuth();
   const navigate = useNavigate();
   const gsiRef = useRef(null);
+  const credentialCallbackRef = useRef(null);
   const [alert, setAlert] = useState(null);
   const [devRoles, setDevRoles] = useState(null); // null = not checked yet, [] = not a dev backend
   const [devBusyRole, setDevBusyRole] = useState(null);
@@ -38,7 +48,7 @@ export default function SignIn() {
   useEffect(() => {
     if (loading || user) return;
 
-    async function handleCredentialResponse(response) {
+    credentialCallbackRef.current = async (response) => {
       try {
         const { user: signedInUser, accessToken } = await authApi.google(response.credential);
         setSession({ user: signedInUser, accessToken });
@@ -46,11 +56,17 @@ export default function SignIn() {
       } catch (err) {
         setAlert(err.message || "Sign-in failed. Please try again.");
       }
-    }
+    };
 
     function initGoogleButton() {
       if (isPlaceholder(GOOGLE_CLIENT_ID) || !window.google?.accounts?.id || !gsiRef.current) return;
-      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredentialResponse });
+      if (!gsiInitialized) {
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: (response) => credentialCallbackRef.current(response),
+        });
+        gsiInitialized = true;
+      }
       window.google.accounts.id.renderButton(gsiRef.current, { theme: "outline", size: "large", width: 320, text: "signin_with" });
     }
 
