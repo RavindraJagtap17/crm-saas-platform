@@ -9,21 +9,17 @@ function isPlaceholder(id) {
   return !id || id.startsWith("PLACEHOLDER");
 }
 
+// Module-level, not per-render — see SignIn.jsx's identical guard for why:
+// google.accounts.id.initialize() only needs to run once per page load,
+// and this file's own credentialCallbackRef stays fresh every render.
+let gsiInitialized = false;
+
 // Loose, client-side sanity checks only — mirrors the server's own
 // validators just closely enough to give a same-field inline error instead
 // of a generic alert; the server remains the actual authority.
 const GSTIN_PATTERN = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/;
 const PHONE_PATTERN = /^\+?[0-9]{7,15}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const FIELDS = [
-  { key: "name", label: "Agency name" },
-  { key: "address", label: "Address" },
-  { key: "city", label: "City" },
-  { key: "gstNumber", label: "GST number" },
-  { key: "mobile", label: "Mobile" },
-  { key: "contactEmail", label: "Contact email" },
-];
 
 /**
  * Ported from the old frontend's auth-signup.js. Google Identity Services'
@@ -38,6 +34,7 @@ export default function SignUp() {
   const { user, loading, setSession } = useAuth();
   const navigate = useNavigate();
   const gsiRef = useRef(null);
+  const credentialCallbackRef = useRef(null);
   const [alert, setAlert] = useState(null);
   const [fields, setFields] = useState({ name: "", address: "", city: "", gstNumber: "", mobile: "", contactEmail: "" });
   const fieldsRef = useRef(fields);
@@ -73,7 +70,7 @@ export default function SignUp() {
       };
     }
 
-    async function handleCredentialResponse(response) {
+    credentialCallbackRef.current = async (response) => {
       setAlert(null);
       const clean = readAndValidate();
       if (!clean) return;
@@ -92,11 +89,17 @@ export default function SignUp() {
           setAlert(err.message || "Signup failed. Please try again.");
         }
       }
-    }
+    };
 
     function initGoogleButton() {
       if (isPlaceholder(GOOGLE_CLIENT_ID) || !window.google?.accounts?.id || !gsiRef.current) return;
-      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredentialResponse });
+      if (!gsiInitialized) {
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: (response) => credentialCallbackRef.current(response),
+        });
+        gsiInitialized = true;
+      }
       window.google.accounts.id.renderButton(gsiRef.current, { theme: "outline", size: "large", width: 320, text: "signup_with" });
     }
 

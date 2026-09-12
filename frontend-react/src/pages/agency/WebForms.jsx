@@ -11,8 +11,8 @@ import { EmptyState, SkeletonRows } from "../../components/States";
 const FRONTEND_ORIGIN = window.location.origin;
 
 function embedSnippets(form) {
-  const scriptTag = `<script src="${FRONTEND_ORIGIN}/public/embed/crm-lead-widget.js" data-form-key="${form.formKey}" data-api-base="${API_BASE_URL}"><\/script>`;
-  const iframeTag = `<iframe src="${FRONTEND_ORIGIN}/public/embed/lead-form.html?formKey=${form.formKey}" width="100%" height="520" style="border:0"></iframe>`;
+  const scriptTag = `<script src="${FRONTEND_ORIGIN}/public/embed/crm-lead-widget.js" data-form-key="${form.formKey}" data-api-base="${API_BASE_URL}"></script>`;
+  const iframeTag = `<iframe src="${FRONTEND_ORIGIN}/public/embed/lead-form.html?formKey=${form.formKey}&apiBase=${encodeURIComponent(API_BASE_URL)}" width="100%" height="520" style="border:0"></iframe>`;
   return { scriptTag, iframeTag };
 }
 

@@ -389,7 +389,7 @@ simplification (see Assumptions in the Step 7 report), not a page-picker UI, sin
 for only what's necessary for lead ingestion. The Page's own access token is what actually gets
 encrypted and stored — leads are always fetched with a Page token, never the user token. Ad
 account access is fetched best-effort and never blocks the connection if it fails. The browser is
-then redirected to `{FRONTEND_URL}/public/admin/meta-integration.html?connected=true` (or
+then redirected to `{FRONTEND_URL}/admin/meta-integration?connected=true` (or
 `?error=...`), since a server-to-browser redirect is the only channel this callback has back to
 the frontend.
 

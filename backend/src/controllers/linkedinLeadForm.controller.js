@@ -20,17 +20,17 @@ const oauthCallback = asyncHandler(async (req, res) => {
   const { code, state, error: linkedinError } = req.query;
 
   if (linkedinError) {
-    return res.redirect(`${config.frontendUrl}/public/admin/linkedin-integration.html?error=${encodeURIComponent(String(linkedinError))}`);
+    return res.redirect(`${config.frontendUrl}/admin/linkedin-integration?error=${encodeURIComponent(String(linkedinError))}`);
   }
   if (!code || !state) {
-    return res.redirect(`${config.frontendUrl}/public/admin/linkedin-integration.html?error=missing_params`);
+    return res.redirect(`${config.frontendUrl}/admin/linkedin-integration?error=missing_params`);
   }
 
   try {
     await linkedinLeadFormService.completeConnect(code, state);
-    return res.redirect(`${config.frontendUrl}/public/admin/linkedin-integration.html?connected=true`);
+    return res.redirect(`${config.frontendUrl}/admin/linkedin-integration?connected=true`);
   } catch (err) {
-    return res.redirect(`${config.frontendUrl}/public/admin/linkedin-integration.html?error=${encodeURIComponent(err.code || "connection_failed")}`);
+    return res.redirect(`${config.frontendUrl}/admin/linkedin-integration?error=${encodeURIComponent(err.code || "connection_failed")}`);
   }
 });
 
