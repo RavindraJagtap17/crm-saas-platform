@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Seeds the 3 approved roles. This is reference data the application
+ * Seeds the 4 approved roles. This is reference data the application
  * cannot function without (every user row needs a role_id) — not sample
  * or demo data — which is why it's kept separate from the migrations
  * folder (schema changes) as its own concern, per the approved spec's
@@ -8,6 +8,14 @@
  *
  * Safe to re-run: existing rows are left untouched (ON DUPLICATE KEY
  * UPDATE is a no-op here), nothing is duplicated or overwritten.
+ *
+ * agency_admin/client_admin/client_employee are also inserted additively
+ * by migration 027 (which superseded the original tenant_admin/
+ * tenant_employee pair — see migration 029's data backfill) — listed here
+ * too so this seeder alone is enough to fully provision roles, and so it
+ * stays a harmless no-op on a database where 027 already ran. super_admin
+ * is never created by any migration; this seeder is the only place it
+ * comes from.
  *
  * Deliberately does NOT create any tenant, user, or account — seeding
  * an actual Super Admin account is an account-provisioning concern for
@@ -17,7 +25,7 @@
 require("dotenv").config();
 const mysql = require("mysql2/promise");
 
-const ROLES = ["super_admin", "tenant_admin", "tenant_employee"];
+const ROLES = ["super_admin", "agency_admin", "client_admin", "client_employee"];
 
 function getConnectionConfig() {
   const required = ["DB_HOST", "DB_NAME", "DB_USER"];
