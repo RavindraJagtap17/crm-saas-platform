@@ -17,7 +17,7 @@ const INTEGRATIONS = [
 
 export default function IntegrationsSection() {
   return (
-    <section className="mkt-section" id="lead-sources">
+    <section className="mkt-section mkt-dark-section" id="lead-sources">
       <div className="mkt-container">
         <div className="mkt-section-head">
           <Reveal as="h2" className="mkt-h2">

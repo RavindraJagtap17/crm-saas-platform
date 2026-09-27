@@ -3,16 +3,23 @@ import { useDocumentMeta } from "../../utils/useDocumentMeta";
 import Reveal from "../../components/marketing/Reveal";
 import IntegrationsSection from "../../components/marketing/IntegrationsSection";
 import CTASection from "../../components/marketing/CTASection";
+import LeadsTableMockup from "../../components/marketing/LeadsTableMockup";
+import WebFormMockup from "../../components/marketing/WebFormMockup";
+import DashboardMockup from "../../components/marketing/DashboardMockup";
 import { IconLeads, IconSources, IconClients, IconAnalytics, IconCheck } from "../../components/marketing/icons";
 
 /**
  * Every capability listed below exists in the current application —
- * confirmed against src/pages/admin/Leads.jsx (search/filter/sort/
- * pagination/bulk actions/assignment/status/CSV import-export),
- * src/pages/admin/LeadDetail.jsx (activity log, follow-up scheduling,
- * status history), src/pages/agency/*.jsx (Clients, Web Forms, Custom
- * Fields), and the role/route structure in App.jsx and auth/
- * ProtectedRoute.jsx. Nothing here is aspirational.
+ * confirmed against a code-level audit of backend/src/services/leadService.js,
+ * leadFollowUpService.js, leadImportService.js, the four lead-source
+ * integration services, tenantService.js, and clientService.js. Two
+ * things were deliberately removed from the previous version of this
+ * page after that audit: "sort" (the Leads list has no column sorting —
+ * only search, filter, and pagination) and a standalone "status history"
+ * claim (every status change is recorded server-side, but there is no
+ * screen in the product today that displays that history to a user, so
+ * advertising it as a visible feature would overstate what a customer can
+ * actually see).
  */
 const GROUPS = [
   {
@@ -24,13 +31,14 @@ const GROUPS = [
       "Create, view, and edit leads",
       "Search across name, phone, and email",
       "Filter by status, source, product, and assigned owner",
-      "Sort and paginate through large lead lists",
+      "Paginate through large lead lists",
       "Bulk assign or change the status of multiple leads at once",
       "Assign leads to specific team members",
-      "Track status changes with a status history",
       "Schedule and manage follow-ups per lead",
-      "Log activity notes against a lead",
+      "Log call notes and activity against a lead",
+      "Automatic duplicate detection on matching phone numbers",
     ],
+    Visual: LeadsTableMockup,
   },
   {
     id: "lead-capture",
@@ -39,10 +47,11 @@ const GROUPS = [
     desc: "Bring leads in from the channels your clients already use.",
     items: [
       "Connect Meta Lead Ads, Google Ads Lead Forms, LinkedIn Lead Gen, and IndiaMART",
-      "Embed a website form on any client site",
+      "Embed a web form on any client site with a copy-paste snippet",
       "Import existing leads from a CSV file, with a preview step before confirming",
       "Download a CSV template that matches your lead fields",
     ],
+    Visual: WebFormMockup,
   },
   {
     id: "agency-operations",
@@ -54,6 +63,7 @@ const GROUPS = [
       "Keep each client's leads, sources, and team separate",
       "Role-based access for agency admins, client admins, and team members",
       "Custom fields per client for the details your client's leads need",
+      "Set your agency's name, logo, and brand color across every workspace",
     ],
   },
   {
@@ -63,9 +73,11 @@ const GROUPS = [
     desc: "See what's happening across your pipeline without digging through spreadsheets.",
     items: [
       "A centralized dashboard for lead activity",
+      "Monthly lead volume trends",
       "At-a-glance view of leads by status and source",
       "Follow-up visibility across your team",
     ],
+    Visual: DashboardMockup,
   },
 ];
 
@@ -77,7 +89,7 @@ export default function Features() {
 
   return (
     <>
-      <section className="mkt-section">
+      <section className="mkt-section mkt-dark-section is-alt">
         <div className="mkt-container">
           <div className="mkt-section-head">
             <Reveal as="div" className="mkt-eyebrow">
@@ -115,6 +127,11 @@ export default function Features() {
                   ))}
                 </ul>
               </Reveal>
+              {group.Visual ? (
+                <Reveal className="mkt-feature-visual" delay={100}>
+                  <group.Visual />
+                </Reveal>
+              ) : null}
             </div>
           ))}
         </div>
@@ -122,11 +139,11 @@ export default function Features() {
 
       <IntegrationsSection />
 
-      <section className="mkt-section-tight">
+      <section className="mkt-section-tight mkt-dark-section is-alt">
         <div className="mkt-container" style={{ textAlign: "center" }}>
           <p className="mkt-lead" style={{ margin: "0 auto" }}>
             Want to see how MEP fits your agency&apos;s workflow?{" "}
-            <Link to="/solutions" style={{ color: "var(--brand-600)", fontWeight: "var(--weight-semibold)" }}>
+            <Link to="/solutions" style={{ color: "#c4b5fd", fontWeight: "var(--weight-semibold)" }}>
               Explore solutions
             </Link>
           </p>

@@ -1,22 +1,45 @@
 import { useState } from "react";
 import Reveal from "./Reveal";
-import ProductMockup from "./ProductMockup";
+import LeadsTableMockup from "./LeadsTableMockup";
+import FollowUpMockup from "./FollowUpMockup";
+import DashboardMockup from "./DashboardMockup";
+import CellBand from "./CellBand";
 
 const TABS = [
-  { key: "manage", label: "Manage", copy: "Manage every lead with clarity." },
-  { key: "track", label: "Track", copy: "Know what needs attention." },
-  { key: "grow", label: "Grow", copy: "Turn your data into better decisions." },
+  {
+    key: "leads",
+    label: "Leads",
+    copy: "Search, filter, and manage every lead from one workspace.",
+    Visual: LeadsTableMockup,
+  },
+  {
+    key: "follow-ups",
+    label: "Follow-ups",
+    copy: "See what's overdue, due today, and coming up next.",
+    Visual: FollowUpMockup,
+  },
+  {
+    key: "dashboard",
+    label: "Dashboard",
+    copy: "Pipeline, sources, and volume — at a glance.",
+    Visual: DashboardMockup,
+  },
 ];
 
 export default function ProductShowcase() {
-  const [active, setActive] = useState("manage");
+  const [active, setActive] = useState("leads");
   const activeTab = TABS.find((t) => t.key === active);
+  const Visual = activeTab.Visual;
 
   return (
-    <section className="mkt-section mkt-section-alt">
+    <section className="mkt-section mkt-dark-section mkt-showcase-section">
+      <CellBand variant="dark" />
       <div className="mkt-container">
         <div className="mkt-section-head">
-          <Reveal as="h2" className="mkt-h2">
+          <Reveal as="div" className="mkt-eyebrow">
+            Inside MEP
+          </Reveal>
+          <Reveal as="h2" className="mkt-h2" delay={40}>
             Everything your team needs. Right where you need it.
           </Reveal>
         </div>
@@ -36,8 +59,10 @@ export default function ProductShowcase() {
           ))}
         </div>
 
-        <Reveal className="mkt-hero-visual" style={{ marginBottom: "var(--space-6)" }} key={active}>
-          <ProductMockup caption={activeTab.copy} />
+        <p className="mkt-showcase-caption">{activeTab.copy}</p>
+
+        <Reveal className="mkt-hero-visual" key={active}>
+          <Visual />
         </Reveal>
       </div>
     </section>

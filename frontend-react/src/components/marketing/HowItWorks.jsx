@@ -9,7 +9,7 @@ const STEPS = [
 
 export default function HowItWorks() {
   return (
-    <section className="mkt-section">
+    <section className="mkt-section mkt-dark-section">
       <div className="mkt-container">
         <div className="mkt-section-head">
           <Reveal as="h2" className="mkt-h2">
@@ -18,6 +18,7 @@ export default function HowItWorks() {
         </div>
 
         <div className="mkt-steps">
+          <div className="mkt-steps-line" aria-hidden="true" />
           {STEPS.map((step, i) => (
             <Reveal as="div" className="mkt-step" key={step.number} delay={i * 90}>
               <span className="mkt-step-number">{step.number}</span>

@@ -138,3 +138,43 @@ export function IconArrow(props) {
     </svg>
   );
 }
+
+export function IconShield(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...base} {...props}>
+      <path d="M12 3.5 19 6.5V11c0 5-3 8.3-7 9.5-4-1.2-7-4.5-7-9.5V6.5Z" />
+      <path d="M9 12l2 2 4-4.5" />
+    </svg>
+  );
+}
+
+export function IconPalette(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...base} {...props}>
+      <path d="M12 3.5a8.5 8.5 0 1 0 0 17c1 0 1.8-.8 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H16c2.2 0 4-1.8 4-4 0-4-3.6-7-8-7Z" />
+      <circle cx="8" cy="10.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="8" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="10.5" r="1.1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function IconMail(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...base} {...props}>
+      <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+      <path d="M4.5 6.5 12 12.5l7.5-6" />
+    </svg>
+  );
+}
+
+export function IconLicense(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...base} {...props}>
+      <rect x="3.5" y="4.5" width="17" height="13" rx="2" />
+      <circle cx="8.5" cy="11" r="2" />
+      <path d="M13 9.5h6M13 12.5h4" />
+      <path d="M6.5 20.5 8.5 18l2 2.5" />
+    </svg>
+  );
+}

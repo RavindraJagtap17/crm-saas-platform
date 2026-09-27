@@ -22,10 +22,10 @@ export default function Home() {
       <Hero />
       <TrustStrip />
       <ValueProposition />
+      <ProductShowcase />
       <FeatureGrid />
       <IntegrationsSection />
       <AgencySection />
-      <ProductShowcase />
       <HowItWorks />
       <BenefitsSection />
       <CTASection />

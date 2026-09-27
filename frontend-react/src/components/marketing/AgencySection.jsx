@@ -13,7 +13,7 @@ const BENEFITS = [
 
 export default function AgencySection() {
   return (
-    <section className="mkt-section mkt-section-alt">
+    <section className="mkt-section mkt-dark-section is-alt">
       <div className="mkt-container mkt-grid-2" style={{ alignItems: "center", gap: "var(--space-10)" }}>
         <Reveal>
           <h2 className="mkt-h2" style={{ marginBottom: "var(--space-4)" }}>
@@ -27,7 +27,7 @@ export default function AgencySection() {
             {BENEFITS.map((benefit) => (
               <li key={benefit} style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)" }}>
                 <IconCheck aria-hidden="true" style={{ color: "var(--color-success)", flexShrink: 0, marginTop: 2, width: 18, height: 18 }} />
-                <span style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)" }}>{benefit}</span>
+                <span className="mkt-muted" style={{ fontSize: "var(--text-sm)" }}>{benefit}</span>
               </li>
             ))}
           </ul>

@@ -3,7 +3,7 @@ import Reveal from "./Reveal";
 
 export default function CTASection() {
   return (
-    <section className="mkt-section-tight">
+    <section className="mkt-section-tight mkt-dark-section">
       <div className="mkt-container">
         <Reveal as="div" className="mkt-cta">
           <h2 className="mkt-h2">Ready to bring your leads together?</h2>

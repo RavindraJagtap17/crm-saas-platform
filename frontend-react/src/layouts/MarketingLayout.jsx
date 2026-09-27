@@ -40,8 +40,11 @@ export default function MarketingLayout() {
 
   return (
     <div className="mkt">
+      <a href="#main-content" className="mkt-skip-link">
+        Skip to content
+      </a>
       <MarketingNavbar />
-      <main id="main-content">
+      <main id="main-content" tabIndex={-1}>
         <Outlet />
       </main>
       <MarketingFooter />

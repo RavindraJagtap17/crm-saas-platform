@@ -11,7 +11,7 @@ const FLOW = [
 
 export default function ValueProposition() {
   return (
-    <section className="mkt-section">
+    <section className="mkt-section mkt-dark-section is-alt">
       <div className="mkt-container">
         <div className="mkt-section-head">
           <Reveal as="h2" className="mkt-h2">

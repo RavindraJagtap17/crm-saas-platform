@@ -12,7 +12,7 @@ export default function LegalPlaceholder({ title }) {
   useDocumentMeta({ title, description: `MEP's ${title} is being finalized.` });
 
   return (
-    <section className="mkt-section">
+    <section className="mkt-section mkt-dark-section">
       <div className="mkt-container mkt-prose" style={{ textAlign: "center" }}>
         <Reveal>
           <h1 className="mkt-h2" style={{ marginBottom: "var(--space-4)" }}>
@@ -20,7 +20,7 @@ export default function LegalPlaceholder({ title }) {
           </h1>
           <p>
             This page is being finalized and isn&apos;t published yet. In the meantime, reach out through the{" "}
-            <Link to="/contact" style={{ color: "var(--brand-600)", fontWeight: "var(--weight-semibold)" }}>
+            <Link to="/contact" style={{ color: "#c4b5fd", fontWeight: "var(--weight-semibold)" }}>
               Contact page
             </Link>{" "}
             with any questions.

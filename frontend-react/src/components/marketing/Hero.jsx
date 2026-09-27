@@ -5,6 +5,7 @@ import ProductMockup from "./ProductMockup";
 export default function Hero() {
   return (
     <section className="mkt-hero">
+      <div className="mkt-beam" aria-hidden="true" />
       <div className="mkt-container mkt-hero-inner">
         <Reveal className="mkt-hero-copy">
           <div className="mkt-eyebrow mkt-hero-eyebrow">The lead management platform for agencies</div>
@@ -13,7 +14,7 @@ export default function Hero() {
             MEP gives agencies one platform to capture, organize, assign, and follow up with leads from multiple
             sources — while managing client operations from one place.
           </p>
-          <div className="mkt-btn-group" style={{ justifyContent: "center" }}>
+          <div className="mkt-btn-group">
             <Link to="/auth/signup" className="btn btn-primary mkt-btn-lg">
               Get Started
             </Link>

@@ -1,28 +1,28 @@
 import Reveal from "./Reveal";
-import { IconLeads, IconSources, IconAssign, IconFollowUp, IconAnalytics, IconClients } from "./icons";
 
 /**
- * Deliberately capability names, not invented customer counts or logos —
- * "Trusted by 10,000+ agencies" would need a real number this project
- * doesn't have.
+ * Deliberately factual, verifiable capability/scale statements — not
+ * invented customer counts, logos, or "trusted by" claims. Each number
+ * traces to something real in the product: 4 lead-source integrations
+ * (Meta, Google Ads, LinkedIn, IndiaMART), 4 distinct roles with
+ * server-enforced tenant isolation, no seat cap on team members, and the
+ * three real capture paths (integrations, embeddable web forms, CSV).
  */
-const ITEMS = [
-  { icon: IconLeads, label: "Lead Management" },
-  { icon: IconSources, label: "Lead Capture" },
-  { icon: IconAssign, label: "Assignment" },
-  { icon: IconFollowUp, label: "Follow-ups" },
-  { icon: IconAnalytics, label: "Analytics" },
-  { icon: IconClients, label: "Client Management" },
+const STATS = [
+  { value: "4", label: "Lead source integrations" },
+  { value: "4", label: "Roles with isolated access" },
+  { value: "Unlimited", label: "Team members per client" },
+  { value: "3", label: "Ways to capture leads" },
 ];
 
 export default function TrustStrip() {
   return (
-    <section className="mkt-strip">
+    <section className="mkt-strip mkt-dark-section">
       <Reveal className="mkt-container mkt-strip-row">
-        {ITEMS.map(({ icon: Icon, label }) => (
-          <span className="mkt-strip-item" key={label}>
-            <Icon aria-hidden="true" />
-            {label}
+        {STATS.map((s) => (
+          <span className="mkt-strip-item" key={s.label}>
+            <strong>{s.value}</strong>
+            {s.label}
           </span>
         ))}
       </Reveal>

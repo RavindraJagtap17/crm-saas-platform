@@ -15,7 +15,10 @@ export default function About() {
 
   return (
     <>
-      <section className="mkt-section">
+      <section className="mkt-section mkt-dark-section is-alt">
+        <div className="mkt-container">
+          <div className="mkt-about-figure" aria-hidden="true">MEP</div>
+        </div>
         <div className="mkt-container mkt-prose">
           <Reveal as="div" className="mkt-eyebrow" style={{ marginBottom: "var(--space-4)" }}>
             About MEP

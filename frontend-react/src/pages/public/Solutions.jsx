@@ -2,13 +2,34 @@ import { Link } from "react-router-dom";
 import { useDocumentMeta } from "../../utils/useDocumentMeta";
 import Reveal from "../../components/marketing/Reveal";
 import CTASection from "../../components/marketing/CTASection";
-import { IconClients, IconCheck } from "../../components/marketing/icons";
+import { IconAssign, IconSources, IconCheck } from "../../components/marketing/icons";
 
-function SolutionSection({ id, eyebrow, title, desc, points, primary }) {
+const CLIENTS = ["Client A", "Client B", "Client C"];
+
+function AgencyHierarchyVisual() {
+  return (
+    <Reveal className="mkt-hierarchy" delay={120} aria-hidden="true">
+      <div className="mkt-hierarchy-root">Your Agency</div>
+      <div className="mkt-flow-arrow" />
+      <div className="mkt-hierarchy-clients">
+        {CLIENTS.map((client) => (
+          <div className="mkt-hierarchy-client" key={client}>
+            <div className="mkt-hierarchy-client-name">{client}</div>
+            <div className="mkt-hierarchy-client-row">Leads · Team · Follow-ups</div>
+          </div>
+        ))}
+      </div>
+      <div className="mkt-flow-arrow" />
+      <div className="mkt-hierarchy-agency">Agency-wide dashboard</div>
+    </Reveal>
+  );
+}
+
+function SolutionSection({ id, eyebrow, title, desc, points, primary, Icon, visual }) {
   return (
     <section
       id={id}
-      className={`mkt-section ${primary ? "" : "mkt-section-alt"}`}
+      className={`mkt-section mkt-dark-section ${primary ? "" : "is-alt"}`}
       style={{ scrollMarginTop: "96px" }}
     >
       <div className="mkt-container mkt-grid-2" style={{ alignItems: "center", gap: "var(--space-10)" }}>
@@ -26,19 +47,21 @@ function SolutionSection({ id, eyebrow, title, desc, points, primary }) {
             {points.map((point) => (
               <li key={point} style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)" }}>
                 <IconCheck aria-hidden="true" style={{ color: "var(--color-success)", flexShrink: 0, marginTop: 2, width: 18, height: 18 }} />
-                <span style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)" }}>{point}</span>
+                <span className="mkt-muted" style={{ fontSize: "var(--text-sm)" }}>{point}</span>
               </li>
             ))}
           </ul>
         </Reveal>
-        <Reveal delay={120} className="mkt-card" style={{ padding: "var(--space-8)", textAlign: "center" }}>
-          <div className="mkt-card-icon" style={{ margin: "0 auto var(--space-4)" }}>
-            <IconClients aria-hidden="true" />
-          </div>
-          <p style={{ color: "var(--text-secondary)", fontSize: "var(--text-sm)", margin: 0 }}>
-            Every client&apos;s leads, sources, and team stay in their own workspace — nothing crosses over between clients.
-          </p>
-        </Reveal>
+        {visual || (
+          <Reveal delay={120} className="mkt-card" style={{ padding: "var(--space-8)", textAlign: "center" }}>
+            <div className="mkt-card-icon" style={{ margin: "0 auto var(--space-4)" }}>
+              <Icon aria-hidden="true" />
+            </div>
+            <p className="mkt-muted" style={{ fontSize: "var(--text-sm)", margin: 0 }}>
+              Every client&apos;s leads, sources, and team stay in their own workspace — nothing crosses over between clients.
+            </p>
+          </Reveal>
+        )}
       </div>
     </section>
   );
@@ -52,7 +75,7 @@ export default function Solutions() {
 
   return (
     <>
-      <section className="mkt-section-tight">
+      <section className="mkt-section-tight mkt-dark-section is-alt">
         <div className="mkt-container mkt-section-head">
           <Reveal as="div" className="mkt-eyebrow">
             Solutions
@@ -73,8 +96,10 @@ export default function Solutions() {
           "Keep each client's leads and lead sources separate",
           "Assign team members within a client's workspace",
           "See activity and follow-ups across every client",
+          "Set your agency's name, logo, and brand color across every workspace",
         ]}
         primary
+        visual={<AgencyHierarchyVisual />}
       />
 
       <div id="client-lead-management" style={{ scrollMarginTop: "96px" }} />
@@ -89,6 +114,7 @@ export default function Solutions() {
           "A status pipeline that reflects where each lead really is",
           "Scheduled follow-ups so nothing is forgotten",
         ]}
+        Icon={IconAssign}
       />
 
       <SolutionSection
@@ -101,13 +127,15 @@ export default function Solutions() {
           "Embeddable website forms with CSV import for existing lists",
           "Custom fields so campaign-specific details aren't lost",
         ]}
+        Icon={IconSources}
+        primary
       />
 
-      <section className="mkt-section-tight">
+      <section className="mkt-section-tight mkt-dark-section is-alt">
         <div className="mkt-container" style={{ textAlign: "center" }}>
           <p className="mkt-lead" style={{ margin: "0 auto" }}>
             See the full capability list on the{" "}
-            <Link to="/features" style={{ color: "var(--brand-600)", fontWeight: "var(--weight-semibold)" }}>
+            <Link to="/features" style={{ color: "#c4b5fd", fontWeight: "var(--weight-semibold)" }}>
               Features
             </Link>{" "}
             page.

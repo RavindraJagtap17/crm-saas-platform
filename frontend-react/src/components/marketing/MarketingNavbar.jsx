@@ -14,7 +14,7 @@ const PRODUCT_LINKS = [
   { to: "/features#lead-management", title: "Lead Management", desc: "Organize every lead in one workspace" },
   { to: "/features#lead-capture", title: "Lead Capture", desc: "Web forms and CSV import" },
   { to: "/features#lead-sources", title: "Lead Sources", desc: "Meta, Google Ads, LinkedIn, IndiaMART" },
-  { to: "/features#follow-ups", title: "Follow-ups", desc: "Keep every opportunity on schedule" },
+  { to: "/features#lead-management", title: "Follow-ups", desc: "Keep every opportunity on schedule" },
   { to: "/features#analytics", title: "Analytics", desc: "Dashboards for your pipeline" },
 ];
 
@@ -67,7 +67,7 @@ function NavDropdown({ label, links, id }) {
       </button>
       <div className={`mkt-dropdown ${open ? "is-open" : ""}`} id={id} role="menu">
         {links.map((link) => (
-          <Link key={link.to} to={link.to} className="mkt-dropdown-link" role="menuitem" onClick={() => setOpen(false)}>
+          <Link key={link.title} to={link.to} className="mkt-dropdown-link" role="menuitem" onClick={() => setOpen(false)}>
             <strong>{link.title}</strong>
             <span>{link.desc}</span>
           </Link>
@@ -104,7 +104,7 @@ export default function MarketingNavbar() {
 
   return (
     <header className={`mkt-navbar ${scrolled ? "is-scrolled" : ""}`}>
-      <nav className="mkt-container mkt-navbar-inner" aria-label="Primary">
+      <nav className="mkt-navbar-inner" aria-label="Primary">
         <Link to="/" className="mkt-wordmark">
           <span className="mkt-mark" aria-hidden="true">M</span>
           MEP
@@ -142,7 +142,7 @@ export default function MarketingNavbar() {
         <div className="mkt-mobile-group">
           <div className="mkt-mobile-group-label">Product</div>
           {PRODUCT_LINKS.map((link) => (
-            <Link key={link.to} to={link.to} className="mkt-mobile-link">
+            <Link key={link.title} to={link.to} className="mkt-mobile-link">
               {link.title}
             </Link>
           ))}
