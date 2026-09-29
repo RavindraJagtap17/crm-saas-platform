@@ -55,7 +55,7 @@ export default function Dashboard() {
         <div className="card stat-card"><span className="stat-label">Completed Today</span><span className="stat-value">{followUps.completedTodayCount}</span></div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: "var(--space-6)" }}>
+      <div className="grid-2-panel">
         <div className="card">
           <div className="card-header"><h2 className="card-title">Monthly Lead Volume</h2></div>
           <div className="card-body scroll-x">

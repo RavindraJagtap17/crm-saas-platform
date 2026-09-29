@@ -171,7 +171,7 @@ export default function LeadDetail() {
         </div>
       ) : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "var(--space-6)" }}>
+      <div className="detail-grid">
         <div className="flex-col gap-6">
           <div className="card">
             <div className="card-header"><h3 className="card-title">Details</h3></div>

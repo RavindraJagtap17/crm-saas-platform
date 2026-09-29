@@ -23,10 +23,14 @@ pre.code {
 .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 
 .btn-primary { background: var(--brand-500); color: var(--text-on-brand); box-shadow: var(--shadow-sm); }
-.btn-primary:hover:not(:disabled) { background: var(--brand-600); box-shadow: var(--shadow-md); }
+.btn-primary:hover:not(:disabled) { background: var(--brand-600); box-shadow: var(--shadow-md); transform: translateY(-1px); }
 
 .btn-secondary { background: var(--bg-surface); color: var(--text-primary); border-color: var(--border-strong); }
-.btn-secondary:hover:not(:disabled) { background: var(--bg-surface-hover); border-color: var(--text-tertiary); }
+.btn-secondary:hover:not(:disabled) { background: var(--bg-surface-hover); border-color: var(--text-tertiary); transform: translateY(-1px); }
+/* .btn:active (below) is defined earlier in source order, so without this
+   the hover lift above would win over the press-down feedback while a
+   button is hovered and held — this restores "pressed" as the top state. */
+.btn-primary:active:not(:disabled), .btn-secondary:active:not(:disabled) { transform: translateY(1px); }
 
 .btn-ghost { background: transparent; color: var(--text-secondary); }
 .btn-ghost:hover:not(:disabled) { background: var(--bg-surface-2); color: var(--text-primary); }
@@ -84,7 +88,9 @@ fieldset { border: none; padding: 0; margin: 0; }
 .card {
   background: var(--bg-surface); border: 1px solid var(--border-default);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }
+.card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
 .card-pad { padding: var(--space-6); }
 .card-header {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
@@ -103,6 +109,23 @@ fieldset { border: none; padding: 0; margin: 0; }
 .stat-meta { font-size: var(--text-xs); color: var(--text-secondary); }
 
 .grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-4); }
+
+/* Two side-by-side panels (e.g. dashboard charts) that stack on narrow
+   viewports instead of squeezing — see admin/Dashboard.jsx. */
+.grid-2-panel { display: grid; grid-template-columns: 1.1fr 1fr; gap: var(--space-6); }
+@media (max-width: 860px) {
+  .grid-2-panel { grid-template-columns: 1fr; }
+}
+
+/* Detail-page main/sidebar split (e.g. Lead Detail's Details+Activity vs.
+   Pipeline+Follow-ups) — same collapse-on-narrow-viewport treatment as
+   .grid-2-panel, just a wider main column. */
+.detail-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--space-6); }
+/* Even two-column split (e.g. Super Admin's Tenant/Client detail pages). */
+.detail-grid-even { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); }
+@media (max-width: 860px) {
+  .detail-grid, .detail-grid-even { grid-template-columns: 1fr; }
+}
 
 /* =========================================================
    Tables

@@ -51,7 +51,7 @@ export default function Client() {
         <AccountStatusBadge status={client.status} />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-6)" }}>
+      <div className="detail-grid-even">
         <div className="card">
           <div className="card-header"><h3 className="card-title">Business Information</h3></div>
           <div className="card-body">
