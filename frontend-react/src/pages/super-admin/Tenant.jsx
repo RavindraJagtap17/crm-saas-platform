@@ -237,7 +237,7 @@ export default function Tenant() {
         <div className="card-body"><BusinessInfo tenant={tenant} /></div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-6)" }}>
+      <div className="detail-grid-even">
         <div className="card">
           <div className="card-header">
             <h3 className="card-title">Agency Admins ({users.length})</h3>
