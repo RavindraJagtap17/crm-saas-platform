@@ -8,6 +8,7 @@ const config = require("./config");
 const routes = require("./routes");
 const notFound = require("./middlewares/notFound");
 const errorHandler = require("./middlewares/errorHandler");
+const { UPLOAD_ROOT } = require("./utils/uploadStorage");
 
 const app = express();
 
@@ -82,6 +83,22 @@ app.use((req, res, next) => {
 });
 app.use(cookieParser());
 app.use(morgan(config.isProduction ? "combined" : "dev"));
+
+// White-label Phase 1: serves uploaded tenant logos/favicons
+// (tenant.routes.js's POST /api/tenant/logo|favicon). Public and
+// unauthenticated by design — a logo must be reachable as a plain <img
+// src>, the same expectation the old pasted-URL logoUrl field already had.
+// Read-only: nothing under this path is ever written to except by
+// uploadStorage.js, and never from a client-supplied path segment.
+//
+// helmet()'s default Cross-Origin-Resource-Policy: same-origin (set
+// above, and correct for every other route) blocks the browser from
+// actually rendering an <img>/<link rel="icon"> pointed at this path from
+// the frontend's own origin, which is a different origin from this API
+// (see API_BASE_URL in the frontend's client.js) — CORS alone does not
+// govern this, CORP is a separate, stricter check. Relaxed to
+// cross-origin only for this one static, public, read-only path.
+app.use("/uploads", helmet.crossOriginResourcePolicy({ policy: "cross-origin" }), express.static(UPLOAD_ROOT));
 
 app.use(routes);
 

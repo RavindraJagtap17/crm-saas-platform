@@ -23,3 +23,6 @@ Thumbs.db
 dist/
 build/
 coverage/
+
+# Uploaded tenant files (White-label Phase 1) — runtime data, not source.
+backend/uploads/

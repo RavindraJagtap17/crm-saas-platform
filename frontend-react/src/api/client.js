@@ -9,6 +9,22 @@ import { getAccessToken, setAccessToken, clearAccessToken } from "../auth/tokenS
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 
+// Tenant logo/favicon URLs (White-label Phase 1) are stored as paths
+// relative to the API origin (e.g. /uploads/tenants/13/logo.png — see
+// backend's app.js express.static mount), not the frontend's own origin.
+// The frontend and backend run on different origins (different ports in
+// dev, and not necessarily the same origin in production either — see
+// API_BASE_URL above), so an <img src="/uploads/..."> or <link
+// rel="icon" href="/uploads/..."> would otherwise resolve against
+// wherever the SPA itself is served from, not the API. A tenant's
+// logoUrl can also still be a full external URL from before file upload
+// existed (pasted-URL era) — left untouched here.
+export function resolveAssetUrl(path) {
+  if (!path) return path;
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${API_BASE_URL}${path}`;
+}
+
 export class ApiError extends Error {
   constructor(message, status, code) {
     super(message);

@@ -8,12 +8,16 @@ function validateUpdateBranding(body) {
   if (body.logoUrl !== undefined && body.logoUrl !== null && !isOptionalString(body.logoUrl, 1024)) {
     throw httpError("logoUrl must be a string.", 400);
   }
+  if (body.faviconUrl !== undefined && body.faviconUrl !== null && !isOptionalString(body.faviconUrl, 1024)) {
+    throw httpError("faviconUrl must be a string.", 400);
+  }
   if (body.brandPrimaryColor !== undefined && body.brandPrimaryColor !== null && !isHexColor(body.brandPrimaryColor)) {
     throw httpError("brandPrimaryColor must be a hex value like #1F5C52.", 400);
   }
   return {
     name: body.name?.trim(),
     logoUrl: body.logoUrl,
+    faviconUrl: body.faviconUrl,
     brandPrimaryColor: body.brandPrimaryColor,
   };
 }
