@@ -1,4 +1,5 @@
 import { tenantApi } from "../api/resources";
+import { resolveAssetUrl } from "../api/client";
 
 // Derives readable darker/lighter shades from one tenant brand color —
 // ported verbatim from the old frontend's branding.js.
@@ -56,5 +57,21 @@ export async function applyTenantBranding() {
     root.setProperty("--brand-contrast", readableTextOn(tenant.brandPrimaryColor));
   }
 
+  applyTenantFavicon(tenant.faviconUrl);
+
   return tenant;
+}
+
+// White-label Phase 1: swaps the browser tab icon to the tenant's uploaded
+// favicon, falling back to the app's static default (index.html's own
+// <link rel="icon">) when a tenant hasn't set one — same reset-then-
+// conditionally-set reasoning as the --brand-* properties above, since this
+// SPA can move between tenants (or to a role with no tenant) without a full
+// page reload.
+const DEFAULT_FAVICON_HREF = "/favicon.svg";
+
+function applyTenantFavicon(faviconUrl) {
+  const link = document.querySelector('link[rel="icon"]');
+  if (!link) return;
+  link.href = resolveAssetUrl(faviconUrl) || DEFAULT_FAVICON_HREF;
 }

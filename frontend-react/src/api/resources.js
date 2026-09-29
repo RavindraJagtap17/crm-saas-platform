@@ -15,6 +15,10 @@ export const authApi = {
 export const tenantApi = {
   get: () => api.get("/api/tenant"),
   update: (body) => api.patch("/api/tenant", body),
+  uploadLogo: (file) => api.upload("/api/tenant/logo", file, "logo"),
+  deleteLogo: () => api.delete("/api/tenant/logo"),
+  uploadFavicon: (file) => api.upload("/api/tenant/favicon", file, "favicon"),
+  deleteFavicon: () => api.delete("/api/tenant/favicon"),
 };
 
 export const clientsApi = {

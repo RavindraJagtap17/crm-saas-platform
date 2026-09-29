@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { useAuth } from "../auth/AuthContext";
 import { applyTenantBranding } from "../utils/branding";
 import { dashboardApi } from "../api/resources";
+import { resolveAssetUrl } from "../api/client";
 import { NAV, FOLLOWUP_ROLES, FOLLOWUP_LIST_PATH } from "./nav";
 import { PageTitleProvider } from "./PageTitleContext";
 import { subscribeFollowUpIndicator } from "./followUpIndicatorBus";
@@ -30,7 +31,7 @@ function BrandBlock({ role, tenant }) {
   return (
     <>
       {tenant?.logoUrl ? (
-        <img src={tenant.logoUrl} alt={`${tenant.name} logo`} className="sidebar-logo" />
+        <img src={resolveAssetUrl(tenant.logoUrl)} alt={`${tenant.name} logo`} className="sidebar-logo" />
       ) : (
         <span className="sidebar-logo-fallback" aria-hidden="true">{(tenant?.name || "?").trim().charAt(0).toUpperCase()}</span>
       )}

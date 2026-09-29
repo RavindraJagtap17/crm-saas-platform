@@ -3,6 +3,7 @@ const authenticate = require("../middlewares/authenticate");
 const tenantScope = require("../middlewares/tenantScope");
 const requireActiveTenant = require("../middlewares/requireActiveTenant");
 const requireRole = require("../middlewares/requireRole");
+const { imageUploadSingle } = require("../middlewares/imageUpload");
 const controller = require("../controllers/tenant.controller");
 
 const router = express.Router();
@@ -25,5 +26,15 @@ router.use(authenticate, tenantScope, requireRole("agency_admin", "client_admin"
 // EDITS remain agency_admin-only.
 router.get("/", controller.getOwn);
 router.patch("/", requireActiveTenant, requireRole("agency_admin"), controller.updateOwn);
+
+// White-label Phase 1: logo/favicon upload+removal, agency_admin-only like
+// every other branding write above. imageUploadSingle handles multer
+// wiring (size/mimetype prefilter) only — the real content validation
+// (magic-byte signature) happens in tenantService against the uploaded
+// buffer, see its own comment.
+router.post("/logo", requireActiveTenant, requireRole("agency_admin"), imageUploadSingle("logo"), controller.uploadLogo);
+router.delete("/logo", requireActiveTenant, requireRole("agency_admin"), controller.deleteLogo);
+router.post("/favicon", requireActiveTenant, requireRole("agency_admin"), imageUploadSingle("favicon"), controller.uploadFavicon);
+router.delete("/favicon", requireActiveTenant, requireRole("agency_admin"), controller.deleteFavicon);
 
 module.exports = router;

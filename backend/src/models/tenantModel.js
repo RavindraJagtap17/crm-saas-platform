@@ -7,7 +7,7 @@ const { slugify } = require("../utils/slugify");
 // left in place per the approved migration-safety instructions — dropping
 // it is an explicit later cleanup step, not part of this refactor.
 const PUBLIC_COLUMNS = `
-  id, name, slug, status, logo_url, brand_primary_color,
+  id, name, slug, status, logo_url, favicon_url, brand_primary_color,
   theme_settings, subdomain, custom_domain,
   address, city, gst_number, mobile, contact_email,
   created_at, updated_at
@@ -65,15 +65,30 @@ async function findById(id) {
   return rows[0] || null;
 }
 
-async function updateBranding(id, { name, logoUrl, brandPrimaryColor }) {
+async function updateBranding(id, { name, logoUrl, faviconUrl, brandPrimaryColor }) {
   await pool.query(
     `UPDATE tenants SET
        name = COALESCE(?, name),
        logo_url = COALESCE(?, logo_url),
+       favicon_url = COALESCE(?, favicon_url),
        brand_primary_color = COALESCE(?, brand_primary_color)
      WHERE id = ?`,
-    [name ?? null, logoUrl ?? null, brandPrimaryColor ?? null, id]
+    [name ?? null, logoUrl ?? null, faviconUrl ?? null, brandPrimaryColor ?? null, id]
   );
+  return findById(id);
+}
+
+// Dedicated setters for the logo/favicon upload+delete endpoints — distinct
+// from updateBranding's COALESCE-if-provided semantics (right for a partial
+// PATCH body) because "delete the logo" must be able to write a real NULL,
+// which COALESCE(?, logo_url) can never do for a null parameter.
+async function setLogoUrl(id, url) {
+  await pool.query(`UPDATE tenants SET logo_url = ? WHERE id = ?`, [url, id]);
+  return findById(id);
+}
+
+async function setFaviconUrl(id, url) {
+  await pool.query(`UPDATE tenants SET favicon_url = ? WHERE id = ?`, [url, id]);
   return findById(id);
 }
 
@@ -157,6 +172,8 @@ module.exports = {
   createTenant,
   findById,
   updateBranding,
+  setLogoUrl,
+  setFaviconUrl,
   listAll,
   listRecent,
   updateStatus,
