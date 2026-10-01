@@ -8,6 +8,7 @@ import Pagination from "../../components/Pagination";
 import { confirmDialog } from "../../components/confirmDialog";
 import { toastSuccess, toastError } from "../../components/toast";
 import { FollowUpStatusBadge } from "../../components/Badges";
+import { EmptyState } from "../../components/States";
 import ScheduleFollowUpModal from "../../components/ScheduleFollowUpModal";
 import { formatDateTime } from "../../utils/format";
 import { refreshFollowUpIndicator } from "../../layouts/followUpIndicatorBus";
@@ -158,7 +159,7 @@ export default function FollowUps() {
       </div>
 
       {listError ? (
-        <p className="text-secondary">{listError}</p>
+        <div className="table-wrap"><EmptyState icon="⚠" title="Couldn't load follow-ups" desc={listError} /></div>
       ) : (
         <DataTable columns={columns} rows={items} empty={{ icon: "⏰", title: "No follow-ups match this view", desc: "Try a different filter, or check back once one is scheduled." }} />
       )}

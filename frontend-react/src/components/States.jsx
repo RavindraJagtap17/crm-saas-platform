@@ -3,25 +3,27 @@
 
 export function EmptyState({ icon = "◇", title, desc, action }) {
   return (
-    <div className="empty-state">
-      <div className="empty-icon" aria-hidden="true">{icon}</div>
-      <div className="empty-title">{title}</div>
-      {desc ? <div className="empty-desc">{desc}</div> : null}
-      {action ? <div className="mt-3">{action}</div> : null}
+    <div className="state-block">
+      <div className="state-icon" aria-hidden="true">{icon}</div>
+      <div className="state-title">{title}</div>
+      {desc ? <div className="state-desc">{desc}</div> : null}
+      {action ? <div className="state-actions">{action}</div> : null}
     </div>
   );
 }
 
 export function ErrorState({ title = "Something went wrong", desc, onRetry, retryLabel = "Try again" }) {
   return (
-    <div className="empty-state">
-      <div className="empty-icon" aria-hidden="true">⚠</div>
-      <div className="empty-title">{title}</div>
-      {desc ? <div className="empty-desc">{desc}</div> : null}
+    <div className="state-block">
+      <div className="state-icon" aria-hidden="true">⚠</div>
+      <div className="state-title">{title}</div>
+      {desc ? <div className="state-desc">{desc}</div> : null}
       {onRetry ? (
-        <button className="btn btn-secondary mt-3" onClick={onRetry}>
-          {retryLabel}
-        </button>
+        <div className="state-actions">
+          <button className="btn btn-secondary" onClick={onRetry}>
+            {retryLabel}
+          </button>
+        </div>
       ) : null}
     </div>
   );

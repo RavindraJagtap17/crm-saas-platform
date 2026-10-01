@@ -177,7 +177,7 @@ export default function SignUp() {
             </div>
           ) : null}
           <p className="hint" style={{ textAlign: "center", marginTop: "var(--space-3)" }}>
-            You'll set up payment for your agency's subscription right after this.
+            Signing up is free — you'll be taken straight to your new agency workspace.
           </p>
         </div>
 

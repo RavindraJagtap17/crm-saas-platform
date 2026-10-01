@@ -161,7 +161,7 @@ export default function Overview() {
                   <a
                     href={`/super-admin/tenant/${t.id}`}
                     onClick={(e) => { e.preventDefault(); navigate(`/super-admin/tenant/${t.id}`); }}
-                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--space-3) var(--space-4)", textDecoration: "none", borderBottom: "1px solid var(--border-subtle)" }}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--space-3) var(--space-4)", textDecoration: "none", borderBottom: "1px solid var(--border-default)" }}
                   >
                     <span>
                       <span className="table-cell-primary">{t.name}</span> <span className="text-tertiary text-xs">{formatDate(t.createdAt)}</span>
@@ -200,7 +200,19 @@ export default function Overview() {
               <thead><tr><th>Agency</th><th>Status</th><th>Created</th></tr></thead>
               <tbody>
                 {tenants.map((t) => (
-                  <tr key={t.id} className="is-clickable" onClick={() => navigate(`/super-admin/tenant/${t.id}`)}>
+                  <tr
+                    key={t.id}
+                    className="is-clickable"
+                    tabIndex={0}
+                    role="button"
+                    onClick={() => navigate(`/super-admin/tenant/${t.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigate(`/super-admin/tenant/${t.id}`);
+                      }
+                    }}
+                  >
                     <td data-label="Agency">
                       <span className="table-cell-primary">{t.name}</span>
                       <div className="table-cell-muted text-xs">{t.slug}</div>

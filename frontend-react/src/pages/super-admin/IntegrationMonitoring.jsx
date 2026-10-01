@@ -156,7 +156,7 @@ function RetryHistory({ items }) {
   return (
     <>
       {items.map((h, i) => (
-        <div key={i} className="py-2" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div key={i} className="py-2" style={{ borderBottom: "1px solid var(--border-default)" }}>
           <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
             <span className="text-sm text-secondary">{formatDateTime(h.createdAt)}</span>
             <span className={`badge ${RETRY_RESULT_BADGE[h.result] || "badge-neutral"}`}>{h.result}</span>
@@ -280,7 +280,7 @@ function EventDetailModal({ open, eventId, onClose, onChanged }) {
           </h3>
           <pre
             className="text-xs"
-            style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", background: "var(--surface-2)", padding: "var(--space-3)", borderRadius: "var(--radius-md)", maxHeight: 280, overflow: "auto" }}
+            style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", background: "var(--bg-surface-2)", padding: "var(--space-3)", borderRadius: "var(--radius-md)", maxHeight: 280, overflow: "auto" }}
           >
             {JSON.stringify(ev.rawPayload, null, 2)}
           </pre>
